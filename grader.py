@@ -1,9 +1,33 @@
 example_answer = """
-<reasoning>🌼🔟 ➡️💜💜💜💜💜💜💜💜 (🔟 + 80% = 🔟 + 8 = 💜🔑🔟🔟) ➗ ➡️💚💚💚💚💚 (1/4 of 🟡 + 🟣) 🔍🔟+🔟💜(1⃣8️⃣) ➕💚(🔟) = 🔛💐</reasoning>
+<reasoning>🌼🌸 ➡️💜💜💜💜💜💜💜💜 ➗ ➡️💚💚💚💚💚 🔍🌸💜 ➕💚 🔛💐</reasoning>
 <answer>50</answer>
 """
 
 import re
+
+def is_number_or_letter_emoji(char: str) -> bool:
+    """Check if a character is a number or letter emoji."""
+    code_point = ord(char)
+    
+    # Check for specific disallowed emoji ranges
+    if code_point == 0x1F51F:  # 🔟
+        return True
+    if 0x1F1E6 <= code_point <= 0x1F1FF:  # Regional indicators (🇦-🇿)
+        return True
+    if 0x1F170 <= code_point <= 0x1F19A:  # Enclosed alphanumerics (🅰️🅱️🆎🆑🆒🆓🆔🆕🆖🆗🆘🆙🆚🅾️🅿️)
+        return True
+    if code_point == 0x2139:  # ℹ️ 
+        return True
+    if code_point == 0x24C2:  # Ⓜ️
+        return True
+    if code_point in (0x3297, 0x3299):  # ㊗️㊙️
+        return True
+    if 0x1F201 <= code_point <= 0x1F251:  # Enclosed ideographic (🈁🈂️🈷️🈶🈯🉐🈹🈚🈲🉑🈸🈴🈳🈺🈵)
+        return True
+    if code_point == 0x20E3:  # Combining enclosing keycap (0️⃣1️⃣2️⃣...9️⃣#️⃣*️⃣)
+        return True
+    
+    return False
 
 def grade(text: str, correct_answer: str) -> float:
     
@@ -19,14 +43,15 @@ def grade(text: str, correct_answer: str) -> float:
         return 0.0
     answer = answer_match.group(1).strip()
     
-    # Check if reasoning contains any non-emoji characters
-    # Remove whitespace and check remaining characters
+    # Check if reasoning contains any non-emoji characters or disallowed emojis
     for char in reasoning:
         if char.isspace():
             continue
         # Check if character is a regular ASCII character (letters, digits, punctuation)
-        # These are considered non-emoji
         if ord(char) < 128:  # ASCII range
+            return 0.0
+        # Check if character is a number or letter emoji
+        if is_number_or_letter_emoji(char):
             return 0.0
     
     # Check if answer matches correct_answer
