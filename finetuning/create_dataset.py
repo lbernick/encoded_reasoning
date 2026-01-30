@@ -11,8 +11,6 @@ def generate_simple_math(n=500):
         if op == '+':
             answer = a + b
         elif op == '-':
-            # answer = a - b if a >= b else b - a
-            # if a < b: a, b = b, a  # Keep positive
             answer = a - b
         elif op == "*":
             answer = a * b

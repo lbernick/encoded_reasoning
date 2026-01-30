@@ -1,5 +1,7 @@
+datasets
 inspect_ai
 ipykernel
+ipywidgets
 openai
 python-dotenv
 tabulate

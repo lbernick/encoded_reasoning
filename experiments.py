@@ -224,3 +224,125 @@ response = openrouter_client.responses.create(
 )
 print(response.output_text)
 # %%
+# Download GSM8K dataset from Hugging Face
+from datasets import load_dataset
+
+# Load the GSM8K dataset
+gsm8k = load_dataset("openai/gsm8k", "main")
+
+print(f"Dataset splits: {gsm8k.keys()}")
+print(f"\nTrain set size: {len(gsm8k['train'])}")
+print(f"Test set size: {len(gsm8k['test'])}")
+
+# Show an example
+print("\nExample from training set:")
+print(gsm8k['train'][0])
+# %%
+import random
+import re
+from inspect_ai import Task, eval
+from inspect_ai.dataset import Sample
+from inspect_ai.scorer import match, scorer, Score, Target, accuracy, answer
+from inspect_ai.solver import generate, system_message, TaskState, chain
+
+from inspect_data import gsm8k_question_to_sample, reasoning_plus_answer_scorer, SYSTEM_PROMPT_REASONING_AND_ANSWER_TAGS
+from datasets import DatasetDict
+
+#%%
+# Create a custom scorer for GSM8K
+@scorer(metrics=[accuracy(),])
+def gsm8k_scorer():
+    async def score(state: TaskState, target: Target) -> Score:
+        # Extract answer from model output
+        model_answer = state.output.completion.strip()        
+        # Try to find the last number in the response
+        numbers = re.findall(r'-?\d+(?:,\d+)*(?:\.\d+)?', model_answer)
+        if numbers:
+            predicted = numbers[-1].replace(',', '')
+        else:
+            predicted = model_answer
+        
+        # Compare with target
+        correct = predicted == target.text
+        
+        return Score(
+            value=correct,
+            answer=predicted,
+            explanation=f"Predicted: {predicted}, Expected: {target.text}"
+        )
+    
+    return score
+
+# Get 10 random questions from test set
+random.seed(42)
+test_data = gsm8k['test']
+indices = random.sample(range(len(test_data)), 10)
+
+print("Selected question indices:", indices)
+print()
+
+# Convert to Inspect samples
+samples = []
+for idx in indices:
+    item = test_data[idx]
+    samples.append(
+        gsm8k_question_to_sample(item, idx)
+    )
+
+# # Create task
+task = Task(
+    dataset=samples,
+    solver=[
+        system_message("You are a helpful assistant that solves math word problems. Provide your final answer as a number at the end of your response."),
+        generate()
+    ],
+    scorer=gsm8k_scorer()
+)
+
+# Run evaluation
+results = eval(
+    task,
+    model="openai/gpt-4o-mini",
+    limit=10
+)
+
+# Print results
+# %%
+
+def run_eval(model: str, dataset: DatasetDict, system_prompt: str, n=10):
+    random.seed(42)
+    test_data = dataset["test"]
+    indices = random.sample(range(len(test_data)), n)
+    samples = []
+    for idx in indices:
+        item = test_data[idx]
+        samples.append(
+            gsm8k_question_to_sample(item, idx)
+        )
+    
+    task = Task(
+        dataset=samples,
+        solver=chain(
+            system_message(SYSTEM_PROMPT_REASONING_AND_ANSWER_TAGS),
+            system_message(system_prompt),
+            generate()
+        ),
+        scorer=reasoning_plus_answer_scorer(),
+    )
+    results = eval(
+        task,
+        model=model,
+        limit=n,
+        metadata={
+            "system_prompt": system_prompt,
+        }
+    )
+    return results
+# %%
+system_prompt_emoji_reasoning = f"""
+Your reasoning MUST be in emojis only; no letters, numbers, or alphanumeric emojis.
+Your final answer should be a single number, not an emoji.
+"""
+system_prompt_no_reasoning = f"""Answer immediately."""
+results = run_eval("openai/gpt-4o-mini", gsm8k, system_prompt_no_reasoning)
+# %%
