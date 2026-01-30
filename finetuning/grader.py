@@ -57,6 +57,7 @@ def grade_output(text: str, correct_answer: str) -> float:
     return 1.0
 
 
+
 def grade(sample: dict[str, Any], item: dict[str, Any]) -> float:
     correct_answer = item["answer"]
     output = sample["output_text"]

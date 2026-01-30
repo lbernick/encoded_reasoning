@@ -30,7 +30,7 @@ def create_rft_job(
     training_file_id: str,
     validation_file_id: str,
     model: str = "o4-mini-2025-04-16",
-    reasoning_effort: str = "medium"
+    reasoning_effort: str = "medium",
 ):
     """
     Create a reinforcement fine-tuning job with a Python grader.
@@ -44,18 +44,7 @@ def create_rft_job(
     Returns:
         dict: The fine-tuning job object
     """
-    grader_code = get_grader()
-    
-    # Configure the Python grader
-    # The grader function takes 'text' (model output) and 'correct_answer' as parameters
-    grader_config = {
-        "type": "python",
-        "code": grader_code,
-        "input": {
-            "text": "{{sample.output}}",
-            "correct_answer": "{{item.correct_answer}}"
-        }
-    }
+    grader_config = get_grader()
     
     # Create the fine-tuning job
     job = client.fine_tuning.jobs.create(
@@ -106,10 +95,60 @@ def test_grader():
     print("run response:", response.text)
 
 
+def upload_file(file_path: str, purpose: str = "fine-tune", expires_after_days: int = None):
+    """
+    Upload a file to OpenAI and return the file ID.
+    
+    Args:
+        file_path: Path to the file to upload
+        purpose: The intended purpose of the uploaded file. One of:
+                 - "assistants": Used in the Assistants API
+                 - "batch": Used in the Batch API
+                 - "fine-tune": Used for fine-tuning (default)
+                 - "vision": Images used for vision fine-tuning
+                 - "user_data": Flexible file type for any purpose
+                 - "evals": Used for eval data sets
+        expires_after_days: Optional number of days until the file expires.
+                           If None, files are persisted until manually deleted.
+    
+    Returns:
+        str: The file ID (e.g., "file-abc123...")
+    """
+    with open(file_path, "rb") as f:
+        if expires_after_days is not None:
+            # Convert days to seconds
+            expires_after_seconds = expires_after_days * 24 * 60 * 60
+            file_obj = client.files.create(
+                file=f,
+                purpose=purpose,
+                expires_after={
+                    "anchor": "created_at",
+                    "seconds": expires_after_seconds
+                }
+            )
+        else:
+            file_obj = client.files.create(
+                file=f,
+                purpose=purpose
+            )
+    
+    print(f"✓ File uploaded successfully!")
+    print(f"  File ID: {file_obj.id}")
+    print(f"  Filename: {file_obj.filename}")
+    print(f"  Bytes: {file_obj.bytes}")
+    print(f"  Purpose: {file_obj.purpose}")
+    if hasattr(file_obj, 'expires_at') and file_obj.expires_at:
+        print(f"  Expires at: {file_obj.expires_at}")
+    
+    return file_obj.id
+
 
 def main():
-    TRAINING_FILE_ID = "finetuning/data/simple_math_problems.json"
-    VALIDATION_FILE_ID = "finetuning/data/simple_math_problems.json"
+    #test_grader()
+    #upload_file("finetuning/data/simple_math_problems_train.jsonl")
+    #upload_file("finetuning/data/simple_math_problems_validation.jsonl")
+    TRAINING_FILE_ID = "file-DVSHpMubLvVoYFbv48bjAN"
+    VALIDATION_FILE_ID = "file-WJgD4MsJSgiiFy6JLC7fRa"
     MODEL = "o4-mini-2025-04-16"
     
     print("Creating reinforcement fine-tuning job...")
@@ -122,7 +161,7 @@ def main():
         job = create_rft_job(
             training_file_id=TRAINING_FILE_ID,
             validation_file_id=VALIDATION_FILE_ID,
-            model=MODEL
+            model=MODEL,
         )
         
         print("✓ Fine-tuning job created successfully!")
