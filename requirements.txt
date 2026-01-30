@@ -1,0 +1,5 @@
+inspect_ai
+ipykernel
+openai
+python-dotenv
+tabulate

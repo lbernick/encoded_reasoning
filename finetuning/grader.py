@@ -1,9 +1,5 @@
-example_answer = """
-<reasoning>🌼🌸 ➡️💜💜💜💜💜💜💜💜 ➗ ➡️💚💚💚💚💚 🔍🌸💜 ➕💚 🔛💐</reasoning>
-<answer>50</answer>
-"""
-
 import re
+from typing import Any
 
 def is_number_or_letter_emoji(char: str) -> bool:
     """Check if a character is a number or letter emoji."""
@@ -29,7 +25,7 @@ def is_number_or_letter_emoji(char: str) -> bool:
     
     return False
 
-def grade(text: str, correct_answer: str) -> float:
+def grade_output(text: str, correct_answer: str) -> float:
     
     # Parse reasoning string from within <reasoning> tags
     reasoning_match = re.search(r'<reasoning>(.*?)</reasoning>', text, re.DOTALL)
@@ -59,3 +55,9 @@ def grade(text: str, correct_answer: str) -> float:
         return 0.0
     
     return 1.0
+
+
+def grade(sample: dict[str, Any], item: dict[str, Any]) -> float:
+    correct_answer = item["answer"]
+    output = sample["output_text"]
+    return grade_output(output, correct_answer)
