@@ -24,6 +24,10 @@ def parse_args():
     # Model arguments
     parser.add_argument("--model-name", type=str, default="Qwen/Qwen2.5-3B-Instruct",
                         help="Base model to use")
+    parser.add_argument("--shared-alice-bob", action="store_true", default=True,
+                        help="Alice and Bob share the same adapter (simpler, recommended)")
+    parser.add_argument("--separate-alice-bob", action="store_false", dest="shared_alice_bob",
+                        help="Alice and Bob have separate adapters (more complex)")
     parser.add_argument("--use-4bit", action="store_true", default=True,
                         help="Use 4-bit quantization (Q-LoRA)")
     parser.add_argument("--no-4bit", action="store_false", dest="use_4bit",
@@ -71,6 +75,7 @@ def main():
     # Create configurations
     model_config = ModelConfig(
         model_name=args.model_name,
+        shared_alice_bob=args.shared_alice_bob,
         use_4bit=args.use_4bit,
     )
     
@@ -94,6 +99,8 @@ def main():
     # Print model info
     model_info = model_manager.get_model_info()
     logger.info(f"Model: {model_info['model_name']}")
+    logger.info(f"Alice/Bob mode: {'SHARED adapter' if model_info['alice_bob_shared'] else 'SEPARATE adapters'}")
+    logger.info(f"Number of adapters: {model_info['num_adapters']}")
     logger.info(f"Total parameters: {model_info['total_parameters']:,}")
     logger.info(f"Trainable parameters: {model_info['trainable_parameters']:,} ({model_info['trainable_percentage']:.2f}%)")
     

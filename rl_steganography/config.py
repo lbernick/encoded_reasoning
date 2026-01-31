@@ -11,6 +11,9 @@ class ModelConfig:
     model_name: str = "Qwen/Qwen2.5-3B-Instruct"
     model_revision: Optional[str] = None
     
+    # Agent configuration
+    shared_alice_bob: bool = True  # If True, Alice and Bob share the same adapter
+    
     # LoRA configuration
     lora_r: int = 64
     lora_alpha: int = 16

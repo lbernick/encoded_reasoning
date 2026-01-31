@@ -83,7 +83,7 @@ class SteganographyModel:
 
 
 class MultiAgentModelManager:
-    """Manages the three agents (Alice, Bob, Eve) with shared base model."""
+    """Manages the agents (Alice, Bob, Eve) with shared base model."""
     
     def __init__(self, config: ModelConfig):
         self.config = config
@@ -92,10 +92,12 @@ class MultiAgentModelManager:
         self.alice = None
         self.bob = None
         self.eve = None
+        self.alice_bob_shared = config.shared_alice_bob
         
     def initialize(self):
-        """Initialize the base model and create three adapters."""
+        """Initialize the base model and create adapters."""
         logger.info(f"Loading base model: {self.config.model_name}")
+        logger.info(f"Alice/Bob configuration: {'SHARED adapter' if self.alice_bob_shared else 'SEPARATE adapters'}")
         
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
@@ -126,8 +128,6 @@ class MultiAgentModelManager:
             torch_dtype=torch.float16,
         )
         
-        logger.info("Creating LoRA adapters for Alice, Bob, and Eve")
-        
         # Create LoRA configuration
         lora_config = LoraConfig(
             r=self.config.lora_r,
@@ -138,14 +138,26 @@ class MultiAgentModelManager:
             task_type="CAUSAL_LM",
         )
         
-        # Create three separate adapters
-        self.alice = self._create_agent_model("alice", lora_config)
-        self.bob = self._create_agent_model("bob", lora_config)
-        self.eve = self._create_agent_model("eve", lora_config)
-        
-        # Initialize Bob and Eve with same weights (evenly matched)
-        logger.info("Initializing Bob and Eve with matching weights")
-        self._copy_adapter_weights(source=self.bob, target=self.eve)
+        if self.alice_bob_shared:
+            # Alice and Bob share the same adapter
+            logger.info("Creating 2 LoRA adapters: Alice/Bob (shared) and Eve")
+            self.alice = self._create_agent_model("alice_bob", lora_config)
+            self.bob = self.alice  # Bob is just a reference to Alice
+            self.eve = self._create_agent_model("eve", lora_config)
+            
+            # Initialize Eve with same weights as Alice/Bob (evenly matched)
+            logger.info("Initializing Eve with matching weights to Alice/Bob")
+            self._copy_adapter_weights(source=self.alice, target=self.eve)
+        else:
+            # Alice, Bob, and Eve have separate adapters
+            logger.info("Creating 3 LoRA adapters: Alice, Bob, and Eve")
+            self.alice = self._create_agent_model("alice", lora_config)
+            self.bob = self._create_agent_model("bob", lora_config)
+            self.eve = self._create_agent_model("eve", lora_config)
+            
+            # Initialize Bob and Eve with same weights (evenly matched)
+            logger.info("Initializing Bob and Eve with matching weights")
+            self._copy_adapter_weights(source=self.bob, target=self.eve)
         
         logger.info("Model initialization complete")
         
@@ -169,12 +181,20 @@ class MultiAgentModelManager:
         target.base_model.load_state_dict(source_state)
     
     def save_all_adapters(self, save_dir: str, episode: int):
-        """Save all three adapters."""
+        """Save all adapters."""
         base_path = Path(save_dir) / f"episode_{episode}"
-        self.alice.save_adapter(str(base_path / "alice"))
-        self.bob.save_adapter(str(base_path / "bob"))
-        self.eve.save_adapter(str(base_path / "eve"))
-        logger.info(f"Saved all adapters at episode {episode}")
+        
+        if self.alice_bob_shared:
+            # Save Alice/Bob shared adapter and Eve
+            self.alice.save_adapter(str(base_path / "alice_bob"))
+            self.eve.save_adapter(str(base_path / "eve"))
+            logger.info(f"Saved alice_bob and eve adapters at episode {episode}")
+        else:
+            # Save all three separate adapters
+            self.alice.save_adapter(str(base_path / "alice"))
+            self.bob.save_adapter(str(base_path / "bob"))
+            self.eve.save_adapter(str(base_path / "eve"))
+            logger.info(f"Saved alice, bob, and eve adapters at episode {episode}")
     
     def get_model_info(self) -> dict:
         """Get information about the models."""
@@ -187,4 +207,6 @@ class MultiAgentModelManager:
             "trainable_parameters": num_trainable,
             "trainable_percentage": 100 * num_trainable / num_params,
             "quantization": "4-bit" if self.config.use_4bit else "none",
+            "alice_bob_shared": self.alice_bob_shared,
+            "num_adapters": 2 if self.alice_bob_shared else 3,
         }

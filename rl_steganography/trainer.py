@@ -35,16 +35,23 @@ class GRPOTrainer:
         self.model_manager = model_manager
         self.environment = environment
         self.config = config
+        self.alice_bob_shared = model_manager.alice_bob_shared
         
         # Setup optimizers for each agent
         self.alice_optimizer = AdamW(
             self.model_manager.alice.base_model.parameters(),
             lr=config.learning_rate * config.alice_lr_multiplier,
         )
-        self.bob_optimizer = AdamW(
-            self.model_manager.bob.base_model.parameters(),
-            lr=config.learning_rate * config.bob_lr_multiplier,
-        )
+        
+        # Bob optimizer only needed if Alice and Bob are separate
+        if not self.alice_bob_shared:
+            self.bob_optimizer = AdamW(
+                self.model_manager.bob.base_model.parameters(),
+                lr=config.learning_rate * config.bob_lr_multiplier,
+            )
+        else:
+            self.bob_optimizer = None  # Bob uses Alice's optimizer
+        
         self.eve_optimizer = AdamW(
             self.model_manager.eve.base_model.parameters(),
             lr=config.learning_rate * config.eve_lr_multiplier,
@@ -164,41 +171,82 @@ class GRPOTrainer:
         
         losses = {}
         
-        # Train Alice
-        self.alice_optimizer.zero_grad()
-        alice_loss = self.compute_policy_loss(
-            self.model_manager.alice,
-            alice_prompt,
-            encoded_message,
-            alice_reward,
-            baseline_alice,
-        )
-        alice_loss.backward()
-        torch.nn.utils.clip_grad_norm_(
-            self.model_manager.alice.base_model.parameters(),
-            self.config.gradient_clip
-        )
-        self.alice_optimizer.step()
-        losses["alice_loss"] = alice_loss.item()
+        if self.alice_bob_shared:
+            # Alice and Bob share the same adapter, so we train once with combined reward
+            # Combined reward for Alice/Bob: focus on Bob's decoding accuracy
+            combined_reward = bob_reward + alice_reward  # Bob's accuracy + gap vs Eve
+            
+            self.alice_optimizer.zero_grad()
+            
+            # Train on Alice's encoding task
+            alice_loss = self.compute_policy_loss(
+                self.model_manager.alice,
+                alice_prompt,
+                encoded_message,
+                combined_reward,
+                baseline_alice + baseline_bob,
+            )
+            
+            # Train on Bob's decoding task (same adapter)
+            bob_loss = self.compute_policy_loss(
+                self.model_manager.bob,
+                bob_prompt,
+                bob_decoded,
+                bob_reward,
+                baseline_bob,
+            )
+            
+            # Combine losses
+            total_loss = alice_loss + bob_loss
+            total_loss.backward()
+            
+            torch.nn.utils.clip_grad_norm_(
+                self.model_manager.alice.base_model.parameters(),
+                self.config.gradient_clip
+            )
+            self.alice_optimizer.step()
+            
+            losses["alice_bob_loss"] = total_loss.item()
+            losses["alice_loss"] = alice_loss.item()
+            losses["bob_loss"] = bob_loss.item()
+        else:
+            # Alice and Bob have separate adapters, train independently
+            
+            # Train Alice
+            self.alice_optimizer.zero_grad()
+            alice_loss = self.compute_policy_loss(
+                self.model_manager.alice,
+                alice_prompt,
+                encoded_message,
+                alice_reward,
+                baseline_alice,
+            )
+            alice_loss.backward()
+            torch.nn.utils.clip_grad_norm_(
+                self.model_manager.alice.base_model.parameters(),
+                self.config.gradient_clip
+            )
+            self.alice_optimizer.step()
+            losses["alice_loss"] = alice_loss.item()
+            
+            # Train Bob
+            self.bob_optimizer.zero_grad()
+            bob_loss = self.compute_policy_loss(
+                self.model_manager.bob,
+                bob_prompt,
+                bob_decoded,
+                bob_reward,
+                baseline_bob,
+            )
+            bob_loss.backward()
+            torch.nn.utils.clip_grad_norm_(
+                self.model_manager.bob.base_model.parameters(),
+                self.config.gradient_clip
+            )
+            self.bob_optimizer.step()
+            losses["bob_loss"] = bob_loss.item()
         
-        # Train Bob
-        self.bob_optimizer.zero_grad()
-        bob_loss = self.compute_policy_loss(
-            self.model_manager.bob,
-            bob_prompt,
-            bob_decoded,
-            bob_reward,
-            baseline_bob,
-        )
-        bob_loss.backward()
-        torch.nn.utils.clip_grad_norm_(
-            self.model_manager.bob.base_model.parameters(),
-            self.config.gradient_clip
-        )
-        self.bob_optimizer.step()
-        losses["bob_loss"] = bob_loss.item()
-        
-        # Train Eve
+        # Train Eve (always separate)
         self.eve_optimizer.zero_grad()
         eve_loss = self.compute_policy_loss(
             self.model_manager.eve,
