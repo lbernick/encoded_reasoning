@@ -3,7 +3,7 @@
 import torch
 import torch.nn.functional as F
 from torch.optim import AdamW
-from torch.utils.tensorboard import SummaryWriter
+import wandb
 import numpy as np
 import logging
 from pathlib import Path
@@ -65,8 +65,10 @@ class GRPOTrainer:
         Path(config.log_dir).mkdir(parents=True, exist_ok=True)
         Path(config.output_dir).mkdir(parents=True, exist_ok=True)
         
-        self.writer = SummaryWriter(log_dir=config.log_dir)
         self.setup_logging()
+        
+        # Initialize Weights & Biases
+        self.setup_wandb()
     
     def setup_logging(self):
         """Configure logging."""
@@ -78,6 +80,43 @@ class GRPOTrainer:
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
         logger.setLevel(logging.INFO)
+    
+    def setup_wandb(self):
+        """Initialize Weights & Biases."""
+        # Get model info for wandb config
+        model_info = self.model_manager.get_model_info()
+        
+        # Initialize wandb
+        wandb.init(
+            project=self.config.wandb_project,
+            name=f"run_{self.training_start_time.strftime('%Y%m%d_%H%M%S')}",
+            config={
+                # Model config
+                "model_name": model_info["model_name"],
+                "alice_bob_shared": model_info["alice_bob_shared"],
+                "num_adapters": model_info["num_adapters"],
+                "quantization": model_info["quantization"],
+                "trainable_parameters": model_info["trainable_parameters"],
+                
+                # Training config
+                "num_episodes": self.config.num_episodes,
+                "learning_rate": self.config.learning_rate,
+                "password_bit_length": self.config.password_bit_length,
+                "coordination_rounds": self.config.coordination_rounds,
+                "use_curriculum": self.config.use_curriculum,
+                "curriculum_start_bits": self.config.curriculum_start_bits,
+                "gradient_clip": self.config.gradient_clip,
+                "reward_clip": self.config.reward_clip,
+                
+                # Learning rate multipliers
+                "alice_lr_multiplier": self.config.alice_lr_multiplier,
+                "bob_lr_multiplier": self.config.bob_lr_multiplier,
+                "eve_lr_multiplier": self.config.eve_lr_multiplier,
+            },
+            dir=self.config.log_dir,
+        )
+        
+        logger.info(f"Weights & Biases initialized: {wandb.run.url}")
     
     def compute_policy_loss(
         self,
@@ -295,6 +334,10 @@ class GRPOTrainer:
                     "eve_r": f"{episode_data['eve_reward']:.3f}",
                 })
             
+            # Log example conversations to W&B
+            if episode_idx % self.config.log_examples_every == 0 and episode_idx > 0:
+                self._log_example_to_wandb(episode_data)
+            
             # Check for stability issues
             if episode_idx % self.config.eval_every == 0 and episode_idx > 0:
                 warnings = self.environment.check_stability(self.episode_history)
@@ -308,30 +351,83 @@ class GRPOTrainer:
         
         logger.info("Training complete")
         self._save_final_results()
+        
+        # Finish wandb run
+        wandb.finish()
     
     def _log_metrics(self, episode_idx: int, episode_data: Dict, losses: Dict):
-        """Log training metrics."""
-        # Tensorboard logging
-        self.writer.add_scalar("Reward/Alice", episode_data["alice_reward"], episode_idx)
-        self.writer.add_scalar("Reward/Bob", episode_data["bob_reward"], episode_idx)
-        self.writer.add_scalar("Reward/Eve", episode_data["eve_reward"], episode_idx)
-        
-        self.writer.add_scalar("Loss/Alice", losses["alice_loss"], episode_idx)
-        self.writer.add_scalar("Loss/Bob", losses["bob_loss"], episode_idx)
-        self.writer.add_scalar("Loss/Eve", losses["eve_loss"], episode_idx)
-        
-        self.writer.add_scalar("Environment/PasswordLength", episode_data["password_length"], episode_idx)
-        
+        """Log training metrics to Weights & Biases."""
         # Compute running averages
+        avg_alice = avg_bob = avg_eve = None
         if len(self.episode_history) >= 10:
             recent = self.episode_history[-10:]
             avg_alice = np.mean([e["alice_reward"] for e in recent])
             avg_bob = np.mean([e["bob_reward"] for e in recent])
             avg_eve = np.mean([e["eve_reward"] for e in recent])
+        
+        # Log to W&B
+        log_dict = {
+            # Rewards
+            "reward/alice": episode_data["alice_reward"],
+            "reward/bob": episode_data["bob_reward"],
+            "reward/eve": episode_data["eve_reward"],
+            "reward/gap": episode_data["alice_reward"],  # Alice's reward is Bob-Eve gap
             
-            self.writer.add_scalar("Reward_Avg/Alice", avg_alice, episode_idx)
-            self.writer.add_scalar("Reward_Avg/Bob", avg_bob, episode_idx)
-            self.writer.add_scalar("Reward_Avg/Eve", avg_eve, episode_idx)
+            # Losses
+            "loss/alice": losses["alice_loss"],
+            "loss/bob": losses["bob_loss"],
+            "loss/eve": losses["eve_loss"],
+            
+            # Environment
+            "environment/password_length": episode_data["password_length"],
+            "environment/coordination_rounds": episode_data["coordination_rounds"],
+            
+            # Episode
+            "episode": episode_idx,
+        }
+        
+        # Add running averages if available
+        if avg_alice is not None:
+            log_dict.update({
+                "reward_avg/alice": avg_alice,
+                "reward_avg/bob": avg_bob,
+                "reward_avg/eve": avg_eve,
+                "reward_avg/gap": avg_bob - avg_eve,
+            })
+        
+        # Add combined loss if in shared mode
+        if "alice_bob_loss" in losses:
+            log_dict["loss/alice_bob_combined"] = losses["alice_bob_loss"]
+        
+        wandb.log(log_dict, step=episode_idx)
+    
+    def _log_example_to_wandb(self, episode_data: Dict):
+        """Log an example conversation to W&B as a table."""
+        # Create a W&B table with the example
+        table = wandb.Table(columns=[
+            "Password", 
+            "Encoded Message", 
+            "Bob Decoded", 
+            "Eve Decoded",
+            "Bob Accuracy",
+            "Eve Accuracy",
+            "Gap"
+        ])
+        
+        table.add_data(
+            episode_data["password"],
+            episode_data["encoded_message"],
+            episode_data["bob_decoded"],
+            episode_data["eve_decoded"],
+            f"{episode_data['bob_reward']:.2%}",
+            f"{episode_data['eve_reward']:.2%}",
+            f"{episode_data['alice_reward']:.3f}"
+        )
+        
+        wandb.log({
+            "examples": table,
+            "episode": episode_data["episode"]
+        })
     
     def _handle_stability_issues(self, warnings: Dict[str, bool]):
         """Handle training stability issues."""

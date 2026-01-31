@@ -81,6 +81,10 @@ class TrainingConfig:
     eve_min_accuracy_threshold: float = 0.3  # Reset if Eve drops below this
     bob_min_accuracy_threshold: float = 0.4  # Warning if Bob below this
     alice_reward_variance_threshold: float = 5.0  # Warning if variance too high
+    
+    # Weights & Biases
+    wandb_project: str = "rl-steganography"
+    log_examples_every: int = 100  # Log example conversations to W&B
 
 
 @dataclass
