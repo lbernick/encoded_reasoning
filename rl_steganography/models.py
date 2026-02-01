@@ -29,6 +29,7 @@ class SteganographyModel:
         self.adapter_name = adapter_name
         self.config = config
         
+    @torch.inference_mode()
     def generate(
         self,
         prompt: str,
@@ -53,7 +54,6 @@ class SteganographyModel:
         
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.base_model.device)
         
-        # Handle stop sequences if provided
         generation_kwargs = {
             "max_new_tokens": max_new_tokens,
             "temperature": temperature if do_sample else None,
@@ -61,34 +61,21 @@ class SteganographyModel:
             "do_sample": do_sample,
             "pad_token_id": self.tokenizer.pad_token_id,
             "eos_token_id": self.tokenizer.eos_token_id,
+            "stop_strings": stop_sequences,
+            "tokenizer": self.tokenizer,
             **kwargs
         }
         
-        # Add stop strings if provided (supported in newer transformers versions)
-        if stop_sequences:
-            # Try to use stop_strings parameter if supported
-            try:
-                generation_kwargs["stop_strings"] = stop_sequences
-                generation_kwargs["tokenizer"] = self.tokenizer
-            except:
-                # If not supported, we'll manually check later
-                pass
         
-        with torch.no_grad():
-            outputs = self.base_model.generate(
-                **inputs,
-                **generation_kwargs
-            )
-        
+        outputs = self.base_model.generate(
+            **inputs,
+            **generation_kwargs
+        )
+    
         # Decode only the generated tokens (not the prompt)
         generated_tokens = outputs[0][inputs.input_ids.shape[1]:]
         generated_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
         
-        # Manual post-processing for stop sequences if not natively supported
-        if stop_sequences:
-            for stop_seq in stop_sequences:
-                if stop_seq in generated_text:
-                    generated_text = generated_text.split(stop_seq)[0]
         
         return generated_text.strip()
     
