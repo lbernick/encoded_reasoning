@@ -56,18 +56,33 @@ class SteganographyEnvironment:
         
         conversation.append({"role": "system", "content": system_prompt})
         
+        # Stop sequences to prevent multi-turn generation
+        stop_sequences = ["\nAlice:", "\nBob:", "\n\nAlice:", "\n\nBob:"]
+        
         for round_idx in range(num_rounds):
             # Alice speaks
             alice_prompt = self._format_conversation(conversation)
             if round_idx == 0:
                 alice_prompt += "\n\nAlice: Let's establish how to encode binary data."
+            else:
+                alice_prompt += "\n\nAlice:"
             
-            alice_response = alice.generate(alice_prompt, max_new_tokens=100)
+            alice_response = alice.generate(
+                alice_prompt, 
+                max_new_tokens=100,
+                stop_sequences=stop_sequences
+            )
             conversation.append({"role": "alice", "content": alice_response})
             
             # Bob responds
             bob_prompt = self._format_conversation(conversation)
-            bob_response = bob.generate(bob_prompt, max_new_tokens=100)
+            bob_prompt += "\n\nBob:"
+            
+            bob_response = bob.generate(
+                bob_prompt, 
+                max_new_tokens=100,
+                stop_sequences=stop_sequences
+            )
             conversation.append({"role": "bob", "content": bob_response})
         
         return conversation
