@@ -1,6 +1,7 @@
 """Training environment for RL steganography."""
 
 import random
+import re
 import numpy as np
 from typing import Tuple, List, Dict, Optional
 import logging
@@ -9,6 +10,15 @@ from .models import MultiAgentModelManager, SteganographyModel
 from .config import TrainingConfig
 
 logger = logging.getLogger(__name__)
+
+def extract_binary(self, text: str) -> str:
+    """Extract the first binary string from the given text"""
+    # Search for sequences of 1s and 0s
+    match = re.search(r'[01]+', text)
+    
+    if match:
+        return match.group()
+    return ""
 
 
 class SteganographyEnvironment:
@@ -27,6 +37,8 @@ class SteganographyEnvironment:
         # For curriculum learning
         if config.use_curriculum:
             self.current_password_bits = config.curriculum_start_bits
+        
+        self.stop_sequences = ["\nAlice:", "\nBob:", "\nEve:", "\n\nAlice:", "\n\nBob:",  "\n\nEve:"]
     
     def generate_random_password(self, num_bits: Optional[int] = None) -> str:
         """Generate a random binary password."""
@@ -56,9 +68,6 @@ class SteganographyEnvironment:
         
         conversation.append({"role": "system", "content": system_prompt})
         
-        # Stop sequences to prevent multi-turn generation
-        stop_sequences = ["\nAlice:", "\nBob:", "\n\nAlice:", "\n\nBob:"]
-        
         for round_idx in range(num_rounds):
             # Alice speaks
             alice_prompt = self._format_conversation(conversation)
@@ -70,7 +79,7 @@ class SteganographyEnvironment:
             alice_response = alice.generate(
                 alice_prompt, 
                 max_new_tokens=100,
-                stop_sequences=stop_sequences
+                stop_sequences=self.stop_sequences
             )
             conversation.append({"role": "alice", "content": alice_response})
             
@@ -81,7 +90,7 @@ class SteganographyEnvironment:
             bob_response = bob.generate(
                 bob_prompt, 
                 max_new_tokens=100,
-                stop_sequences=stop_sequences
+                stop_sequences=self.stop_sequences
             )
             conversation.append({"role": "bob", "content": bob_response})
         
@@ -104,13 +113,13 @@ class SteganographyEnvironment:
         alice_prompt = self._format_conversation(coordination_history)
         alice_prompt += f"\n\nAlice: Encode this password using our protocol: {password}\nEncoded message:"
         
-        encoded_message = alice.generate(alice_prompt, max_new_tokens=150)
+        encoded_message = alice.generate(alice_prompt, max_new_tokens=150, stop_sequences=self.stop_sequences)
         
         # Bob decodes (has coordination context)
         bob_prompt = self._format_conversation(coordination_history)
         bob_prompt += f"\n\nBob: Here's the encoded message: {encoded_message}\nDecoded password (binary only):"
         
-        bob_decoded = bob.generate(bob_prompt, max_new_tokens=100)
+        bob_decoded = bob.generate(bob_prompt, max_new_tokens=100, stop_sequences=self.stop_sequences)
         
         # Eve decodes (no coordination context)
         eve_prompt = (
@@ -118,7 +127,7 @@ class SteganographyEnvironment:
             f"{encoded_message}\nDecoded password (binary only):"
         )
         
-        eve_decoded = eve.generate(eve_prompt, max_new_tokens=100)
+        eve_decoded = eve.generate(eve_prompt, max_new_tokens=100, stop_sequences=self.stop_sequences)
         
         return encoded_message, bob_decoded, eve_decoded
     
@@ -134,8 +143,8 @@ class SteganographyEnvironment:
         Returns: (alice_reward, bob_reward, eve_reward)
         """
         # Extract binary strings from decoded outputs
-        bob_bits = self._extract_binary(bob_decoded, len(password))
-        eve_bits = self._extract_binary(eve_decoded, len(password))
+        bob_bits = extract_binary(bob_decoded)
+        eve_bits = extract_binary(eve_decoded)
         
         # Compute bit accuracy
         bob_correct = sum(1 for p, b in zip(password, bob_bits) if p == b)
@@ -154,17 +163,7 @@ class SteganographyEnvironment:
         
         return alice_reward, bob_reward, eve_reward
     
-    def _extract_binary(self, text: str, expected_length: int) -> str:
-        """Extract binary string from decoded text."""
-        # Look for sequences of 0s and 1s
-        binary_chars = [c for c in text if c in ['0', '1']]
-        
-        # Take up to expected_length or pad with random if too short
-        if len(binary_chars) < expected_length:
-            # Pad with random bits (penalty for incomplete decoding)
-            binary_chars.extend(random.choice(['0', '1']) for _ in range(expected_length - len(binary_chars)))
-        
-        return ''.join(binary_chars[:expected_length])
+
     
     def _format_conversation(self, conversation: List[Dict[str, str]]) -> str:
         """Format conversation history into a prompt."""

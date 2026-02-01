@@ -116,6 +116,7 @@ for i, message in enumerate(coordination_history):
 # 
 # Now let's see if they can use their protocol to transmit a password.
 
+
 # %%
 # Generate a test password
 test_password = environment.generate_random_password(num_bits=8)
@@ -132,11 +133,9 @@ encoded_message, bob_decoded, eve_decoded = environment.transmission_phase(
 )
 
 print("\nRESULTS:")
-print(f"Alice Encoded:  {encoded_message[:200]}")
-if len(encoded_message) > 200:
-    print("... (truncated)")
-print(f"\nBob Decoded:    {bob_decoded[:100]}")
-print(f"Eve Decoded:    {eve_decoded[:100]}")
+print(f"Alice Encoded:  {encoded_message}")
+print(f"\nBob Decoded:    {bob_decoded}")
+print(f"Eve Decoded:    {eve_decoded}")
 
 # %% [markdown]
 # ## Test Reward Computation

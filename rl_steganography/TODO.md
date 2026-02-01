@@ -1,0 +1,3 @@
+- Reward function
+  - Currently the % of bits guessed correctly. How to handle password length?
+  - Do we want to extract first binary sequence or last?
