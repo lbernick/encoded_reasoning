@@ -29,6 +29,7 @@ class ModelConfig:
     max_new_tokens: int = 128
     temperature: float = 0.7
     top_p: float = 0.9
+    use_cache: bool = True  # Enable KV cache for faster generation
     
     def __post_init__(self):
         if self.target_modules is None:

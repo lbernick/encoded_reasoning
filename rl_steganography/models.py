@@ -51,7 +51,11 @@ class SteganographyModel:
         # Set the active adapter for this model
         self.base_model.set_adapter(self.adapter_name)
         
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.base_model.device)
+        # OPTIMIZATION: Tokenize directly on GPU to avoid CPU->GPU transfer
+        device = self.base_model.device
+        inputs = self.tokenizer(prompt, return_tensors="pt")
+        # Move all tensors to device in one go
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         
         # Handle stop sequences if provided
         generation_kwargs = {
@@ -61,6 +65,7 @@ class SteganographyModel:
             "do_sample": do_sample,
             "pad_token_id": self.tokenizer.pad_token_id,
             "eos_token_id": self.tokenizer.eos_token_id,
+            "use_cache": self.config.use_cache,  # Enable KV cache
             **kwargs
         }
         
@@ -80,8 +85,9 @@ class SteganographyModel:
                 **generation_kwargs
             )
         
+        # OPTIMIZATION: Move to CPU only once for decoding
         # Decode only the generated tokens (not the prompt)
-        generated_tokens = outputs[0][inputs.input_ids.shape[1]:]
+        generated_tokens = outputs[0][inputs["input_ids"].shape[1]:].cpu()
         generated_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
         
         # Manual post-processing for stop sequences if not natively supported
@@ -91,6 +97,69 @@ class SteganographyModel:
                     generated_text = generated_text.split(stop_seq)[0]
         
         return generated_text.strip()
+    
+    def generate_batch(
+        self,
+        prompts: List[str],
+        max_new_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        do_sample: Optional[bool] = None,
+        **kwargs
+    ) -> List[str]:
+        """
+        Generate text for multiple prompts in a batch (faster than sequential).
+        
+        OPTIMIZATION: Processes multiple prompts together on GPU.
+        """
+        max_new_tokens = max_new_tokens or self.config.max_new_tokens
+        temperature = temperature or self.config.temperature
+        top_p = top_p or self.config.top_p
+        
+        if do_sample is None:
+            do_sample = True
+        
+        # Set the active adapter
+        self.base_model.set_adapter(self.adapter_name)
+        
+        # Tokenize all prompts at once with padding
+        device = self.base_model.device
+        inputs = self.tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+        )
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+        
+        generation_kwargs = {
+            "max_new_tokens": max_new_tokens,
+            "temperature": temperature if do_sample else None,
+            "top_p": top_p if do_sample else None,
+            "do_sample": do_sample,
+            "pad_token_id": self.tokenizer.pad_token_id,
+            "eos_token_id": self.tokenizer.eos_token_id,
+            "use_cache": self.config.use_cache,  # Enable KV cache
+            **kwargs
+        }
+        
+        with torch.no_grad():
+            outputs = self.base_model.generate(
+                **inputs,
+                **generation_kwargs
+            )
+        
+        # Decode all outputs
+        input_lengths = inputs["attention_mask"].sum(dim=1)
+        generated_texts = []
+        
+        for i, output in enumerate(outputs):
+            # Extract only generated tokens
+            generated_tokens = output[input_lengths[i]:].cpu()
+            generated_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+            generated_texts.append(generated_text.strip())
+        
+        return generated_texts
     
     def forward(self, input_ids, attention_mask=None, labels=None):
         """Forward pass through the model."""
