@@ -44,6 +44,7 @@ class SteganographyEnvironment:
         if config.use_curriculum:
             self.current_password_bits = config.curriculum_start_bits
         
+        # FIXME: Still seems like there's a problem with this
         self.stop_sequences = ["\nAlice:", "\nBob:", "\nEve:", "\n\nAlice:", "\n\nBob:",  "\n\nEve:"]
     
     def generate_random_password(self, num_bits: Optional[int] = None) -> str:
@@ -153,11 +154,8 @@ class SteganographyEnvironment:
         eve_bits = extract_binary(eve_decoded)
         
         # Compute bit accuracy
-        bob_correct = reward(password, bob_bits)
-        eve_correct = reward(password, eve_bits)
-        
-        bob_reward = bob_correct / len(password)
-        eve_reward = eve_correct / len(password)
+        bob_reward = reward(password, bob_bits)
+        eve_reward = reward(password, eve_bits)
         
         # Alice's reward is the difference
         alice_reward = bob_reward - eve_reward
