@@ -3,7 +3,7 @@
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model, PeftModel
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 import logging
 from pathlib import Path
 
@@ -35,6 +35,8 @@ class SteganographyModel:
         max_new_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        do_sample: Optional[bool] = None,
+        stop_sequences: Optional[List[str]] = None,
         **kwargs
     ) -> str:
         """Generate text from the model."""
@@ -42,28 +44,59 @@ class SteganographyModel:
         temperature = temperature or self.config.temperature
         top_p = top_p or self.config.top_p
         
+        # Default to sampling unless explicitly disabled
+        if do_sample is None:
+            do_sample = True
+        
+        # Set the active adapter for this model
+        self.base_model.set_adapter(self.adapter_name)
+        
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.base_model.device)
+        
+        # Handle stop sequences if provided
+        generation_kwargs = {
+            "max_new_tokens": max_new_tokens,
+            "temperature": temperature if do_sample else None,
+            "top_p": top_p if do_sample else None,
+            "do_sample": do_sample,
+            "pad_token_id": self.tokenizer.pad_token_id,
+            "eos_token_id": self.tokenizer.eos_token_id,
+            **kwargs
+        }
+        
+        # Add stop strings if provided (supported in newer transformers versions)
+        if stop_sequences:
+            # Try to use stop_strings parameter if supported
+            try:
+                generation_kwargs["stop_strings"] = stop_sequences
+                generation_kwargs["tokenizer"] = self.tokenizer
+            except:
+                # If not supported, we'll manually check later
+                pass
         
         with torch.no_grad():
             outputs = self.base_model.generate(
                 **inputs,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                do_sample=True,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-                **kwargs
+                **generation_kwargs
             )
         
         # Decode only the generated tokens (not the prompt)
         generated_tokens = outputs[0][inputs.input_ids.shape[1]:]
         generated_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
         
+        # Manual post-processing for stop sequences if not natively supported
+        if stop_sequences:
+            for stop_seq in stop_sequences:
+                if stop_seq in generated_text:
+                    generated_text = generated_text.split(stop_seq)[0]
+        
         return generated_text.strip()
     
     def forward(self, input_ids, attention_mask=None, labels=None):
         """Forward pass through the model."""
+        # Set the active adapter for this model
+        self.base_model.set_adapter(self.adapter_name)
+        
         return self.base_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -120,7 +153,7 @@ class MultiAgentModelManager:
             )
         
         # Load base model
-        self.base_model = AutoModelForCausalLM.from_pretrained(
+        base_model = AutoModelForCausalLM.from_pretrained(
             self.config.model_name,
             quantization_config=quantization_config,
             device_map="auto",
@@ -139,25 +172,67 @@ class MultiAgentModelManager:
         )
         
         if self.alice_bob_shared:
-            # Alice and Bob share the same adapter
+            # Alice and Bob share the same adapter, Eve has separate
             logger.info("Creating 2 LoRA adapters: Alice/Bob (shared) and Eve")
-            self.alice = self._create_agent_model("alice_bob", lora_config)
-            self.bob = self.alice  # Bob is just a reference to Alice
-            self.eve = self._create_agent_model("eve", lora_config)
+            
+            # Create model with Alice/Bob adapter
+            self.base_model = get_peft_model(base_model, lora_config, adapter_name="alice_bob")
+            self.alice = SteganographyModel(
+                base_model=self.base_model,
+                tokenizer=self.tokenizer,
+                adapter_name="alice_bob",
+                config=self.config,
+            )
+            self.bob = self.alice  # Bob references the same model
+            
+            # Add Eve adapter to the same base model
+            self.base_model.add_adapter("eve", lora_config)
+            
+            # Create Eve wrapper that uses the eve adapter
+            self.eve = SteganographyModel(
+                base_model=self.base_model,
+                tokenizer=self.tokenizer,
+                adapter_name="eve",
+                config=self.config,
+            )
             
             # Initialize Eve with same weights as Alice/Bob (evenly matched)
             logger.info("Initializing Eve with matching weights to Alice/Bob")
-            self._copy_adapter_weights(source=self.alice, target=self.eve)
+            self._copy_adapter_weights_multiado(from_adapter="alice_bob", to_adapter="eve")
         else:
             # Alice, Bob, and Eve have separate adapters
             logger.info("Creating 3 LoRA adapters: Alice, Bob, and Eve")
-            self.alice = self._create_agent_model("alice", lora_config)
-            self.bob = self._create_agent_model("bob", lora_config)
-            self.eve = self._create_agent_model("eve", lora_config)
+            
+            # Create model with Alice adapter
+            self.base_model = get_peft_model(base_model, lora_config, adapter_name="alice")
+            self.alice = SteganographyModel(
+                base_model=self.base_model,
+                tokenizer=self.tokenizer,
+                adapter_name="alice",
+                config=self.config,
+            )
+            
+            # Add Bob adapter
+            self.base_model.add_adapter("bob", lora_config)
+            self.bob = SteganographyModel(
+                base_model=self.base_model,
+                tokenizer=self.tokenizer,
+                adapter_name="bob",
+                config=self.config,
+            )
+            
+            # Add Eve adapter
+            self.base_model.add_adapter("eve", lora_config)
+            self.eve = SteganographyModel(
+                base_model=self.base_model,
+                tokenizer=self.tokenizer,
+                adapter_name="eve",
+                config=self.config,
+            )
             
             # Initialize Bob and Eve with same weights (evenly matched)
             logger.info("Initializing Bob and Eve with matching weights")
-            self._copy_adapter_weights(source=self.bob, target=self.eve)
+            self._copy_adapter_weights_multiado(from_adapter="bob", to_adapter="eve")
         
         logger.info("Model initialization complete")
         
@@ -175,10 +250,19 @@ class MultiAgentModelManager:
             config=self.config,
         )
     
-    def _copy_adapter_weights(self, source: SteganographyModel, target: SteganographyModel):
-        """Copy adapter weights from source to target."""
-        source_state = source.base_model.state_dict()
-        target.base_model.load_state_dict(source_state)
+    def _copy_adapter_weights_multiado(self, from_adapter: str, to_adapter: str):
+        """Copy adapter weights from one adapter to another in a multi-adapter setup."""
+        # Get state dict for the source adapter
+        source_state = {}
+        for name, param in self.base_model.named_parameters():
+            # Look for parameters belonging to the source adapter
+            if from_adapter in name and 'lora' in name.lower():
+                # Create corresponding target adapter parameter name
+                target_name = name.replace(from_adapter, to_adapter)
+                source_state[target_name] = param.data.clone()
+        
+        # Load into target adapter
+        self.base_model.load_state_dict(source_state, strict=False)
     
     def save_all_adapters(self, save_dir: str, episode: int):
         """Save all adapters."""
