@@ -11,7 +11,7 @@ from .config import TrainingConfig
 
 logger = logging.getLogger(__name__)
 
-def extract_binary(self, text: str) -> str:
+def extract_binary(text: str) -> str:
     """Extract the first binary string from the given text"""
     # Search for sequences of 1s and 0s
     match = re.search(r'[01]+', text)
@@ -19,6 +19,12 @@ def extract_binary(self, text: str) -> str:
     if match:
         return match.group()
     return ""
+
+def reward(password: str, guess: str) -> float:
+    # TODO: Tweak me
+    min_len = min(len(password), len(guess))
+    n_correct = sum([password[i] == guess[i] for i in range(min_len)])
+    return n_correct / len(password)
 
 
 class SteganographyEnvironment:
@@ -147,8 +153,8 @@ class SteganographyEnvironment:
         eve_bits = extract_binary(eve_decoded)
         
         # Compute bit accuracy
-        bob_correct = sum(1 for p, b in zip(password, bob_bits) if p == b)
-        eve_correct = sum(1 for p, e in zip(password, eve_bits) if p == e)
+        bob_correct = reward(password, bob_bits)
+        eve_correct = reward(password, eve_bits)
         
         bob_reward = bob_correct / len(password)
         eve_reward = eve_correct / len(password)
