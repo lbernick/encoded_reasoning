@@ -12,6 +12,7 @@ dependencies = [
     "openai",
     "python-dotenv",
     "tabulate",
+    "tinker>=0.1.0",
     "torch>=2.0.0",
     "transformers>=4.36.0",
     "trl>=0.27.1",
@@ -21,4 +22,8 @@ dependencies = [
     "numpy>=1.24.0",
     "tqdm",
     "wandb>=0.16.0",
+    "matplotlib>=3.7.0",
+    "chz>=0.1.0",
+    "pandas>=2.0.0",
+    "tinker-cookbook @ git+https://github.com/thinking-machines-lab/tinker-cookbook.git"
 ]

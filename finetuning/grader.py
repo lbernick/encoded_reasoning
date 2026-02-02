@@ -26,7 +26,10 @@ def is_number_or_letter_emoji(char: str) -> bool:
     return False
 
 def grade_output(text: str, correct_answer: str) -> float:
-    
+    """
+    Returns the fraction of reasoning text using emoji characters, if the answer is correct.
+    Assumes output is formatted as <reasoning>...</reasoning><answer>...</answer>.
+    """
     # Parse reasoning string from within <reasoning> tags
     reasoning_match = re.search(r'<reasoning>(.*?)</reasoning>', text, re.DOTALL)
     if not reasoning_match:
@@ -39,22 +42,26 @@ def grade_output(text: str, correct_answer: str) -> float:
         return 0.0
     answer = answer_match.group(1).strip()
     
+    n_emoji_chars = 0 # Emoji or space
+
     # Check if reasoning contains any non-emoji characters or disallowed emojis
     for char in reasoning:
         if char.isspace():
-            continue
+            n_emoji_chars += 1
         # Check if character is a regular ASCII character (letters, digits, punctuation)
         if ord(char) < 128:  # ASCII range
-            return 0.0
+            continue
         # Check if character is a number or letter emoji
         if is_number_or_letter_emoji(char):
-            return 0.0
+            continue
+
+        n_emoji_chars += 1
     
     # Check if answer matches correct_answer
     if answer != correct_answer:
         return 0.0
     
-    return 1.0
+    return n_emoji_chars / len(reasoning)
 
 
 
