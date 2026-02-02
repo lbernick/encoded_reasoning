@@ -7,7 +7,7 @@ This module contains the core run_eval function and system prompts.
 from pathlib import Path
 
 from inspect_ai import Task, eval as inspect_eval, Epochs
-from inspect_ai.model import GenerateConfig
+
 from inspect_ai.solver import generate, system_message, chain, assistant_message, solver, TaskState
 
 from .datasets import load_dataset, get_scorer
@@ -19,12 +19,19 @@ def repeat_input_solver(n: int):
     """Solver that repeats the user input n times."""
     async def solve(state: TaskState, generate):
         if n > 1 and state.messages:
-            # Find the user message and repeat its content
+            # Create new message list to avoid mutating shared message objects
+            # (which can cause all samples to have the same question)
+            from copy import copy
+            new_messages = []
             for msg in state.messages:
-                if msg.role == "user":
-                    original = msg.content
-                    msg.content = "\n\n".join([original] * n)
-                    break
+                if msg.role == "user" and isinstance(msg.content, str):
+                    # Create a copy with repeated content instead of mutating original
+                    new_msg = copy(msg)
+                    new_msg.content = "\n\n".join([msg.content] * n)
+                    new_messages.append(new_msg)
+                else:
+                    new_messages.append(msg)
+            state.messages = new_messages
         return state
     return solve
 
@@ -34,11 +41,19 @@ def filler_tokens_solver(n: int):
     """Solver that adds n filler tokens (periods) to the user prompt."""
     async def solve(state: TaskState, generate):
         if n > 0 and state.messages:
-            # Find the user message and add filler
+            # Create new message list to avoid mutating shared message objects
+            # (which can cause all samples to have the same question)
+            from copy import copy
+            new_messages = []
             for msg in state.messages:
-                if msg.role == "user":
-                    msg.content = msg.content + "\n" + "." * n
-                    break
+                if msg.role == "user" and isinstance(msg.content, str):
+                    # Create a copy with filler content instead of mutating original
+                    new_msg = copy(msg)
+                    new_msg.content = msg.content + "\n" + "." * n
+                    new_messages.append(new_msg)
+                else:
+                    new_messages.append(msg)
+            state.messages = new_messages
         return state
     return solve
 
@@ -94,7 +109,7 @@ def build_task(
     """Build a single evaluation task.
 
     Args:
-        constraint_name: Reasoning constraint to apply (e.g., "baseline", "no_cot")
+        constraint_name: Reasoning constraint to apply (e.g., "unconstrained", "no_cot")
         dataset_name: Dataset to use
         seed: Random seed for reproducibility
         epochs: Number of times to run each sample (reduces variance via majority vote)
@@ -110,15 +125,13 @@ def build_task(
     constraint = get_constraint(constraint_name)
 
     # Choose base prompt based on whether constraint expects reasoning
-        base_prompt = BASE_SYSTEM_PROMPT_COT if constraint.expects_reasoning else BASE_SYSTEM_PROMPT_NO_COT
+    base_prompt = BASE_SYSTEM_PROMPT_COT if constraint.expects_reasoning else BASE_SYSTEM_PROMPT_NO_COT
 
-        full_prompt = base_prompt + "\n" + constraint.system_prompt
+    full_prompt = base_prompt + "\n" + constraint.system_prompt
     # Default name (CLI adds _repeatN suffix if needed)
     task_name = name or f"{constraint_name}_{dataset_name}"
 
     # Build solver chain - add assistant prefill for no-COT to prevent reasoning
-    # Stop generation after </answer> to save tokens
-    gen_config = GenerateConfig(stop_seqs=["</answer>"])
 
     # Base solvers
     solvers = [system_message(full_prompt)]
@@ -135,7 +148,7 @@ def build_task(
     if not constraint.expects_reasoning:
         solvers.append(assistant_message("<answer>"))
 
-    solvers.append(generate(config=gen_config))
+    solvers.append(generate())
 
     return Task(
         name=task_name,

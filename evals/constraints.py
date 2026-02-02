@@ -48,6 +48,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
             "  - Math: ➕ (not +), ➖ (not -), ✖️ (not *), ➗ (not /), ▶️ or ➡️ (not =)\n"
             "  - Quantities: Repeat emojis (🍎🍎🍎 for 3 apples)\n"
             "  - Result: Use ✅ or 🔜 to show final count\n"
+            "Emojis are the only characters that can appear withing <reasoning> tags. All other characters will be penalized heavily."
             "The <answer> tags may contain the numeric answer."
         ),
         expects_reasoning=True,
