@@ -77,6 +77,11 @@ class SteganographyModel:
         generated_tokens = outputs[0][inputs.input_ids.shape[1]:]
         generated_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
         
+        # Trim any stop sequences from the end of the string
+        if stop_sequences:
+            for stop_seq in stop_sequences:
+                if stop_seq in generated_text:
+                    generated_text = generated_text.split(stop_seq)
         
         return generated_text.strip()
     
