@@ -40,21 +40,23 @@ def grade_output(text: str, correct_answer: str) -> float:
     answer = answer_match.group(1).strip()
     
     # Check if reasoning contains any non-emoji characters or disallowed emojis
+    allowed_char_count = 0
     for char in reasoning:
         if char.isspace():
-            continue
+            allowed_char_count += 1
         # Check if character is a regular ASCII character (letters, digits, punctuation)
         if ord(char) < 128:  # ASCII range
-            return 0.0
+            continue
         # Check if character is a number or letter emoji
         if is_number_or_letter_emoji(char):
-            return 0.0
+            continue
+        allowed_char_count +=1
     
     # Check if answer matches correct_answer
     if answer != correct_answer:
         return 0.0
     
-    return 1.0
+    return allowed_char_count / len(reasoning)
 
 
 
