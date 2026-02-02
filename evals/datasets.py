@@ -20,7 +20,7 @@ import re
 from typing import Any, Callable
 
 from inspect_ai.dataset import Sample, hf_dataset, Dataset
-from inspect_ai.scorer import Scorer, Score, Target, accuracy, scorer
+from inspect_ai.scorer import Scorer, Score, Target, accuracy, stderr, scorer
 from inspect_ai.solver import TaskState
 
 # Letters for multiple choice options
@@ -51,7 +51,7 @@ def extract_number_answer(text: str) -> str | None:
     return None
 
 
-@scorer(metrics=[accuracy()])
+@scorer(metrics=[accuracy(), stderr()])
 def gsm8k_scorer() -> Scorer:
     """Scorer for GSM8K that extracts answers from <answer> tags or last number."""
 
@@ -133,7 +133,7 @@ def extract_choice_answer(text: str) -> str | None:
     return None
 
 
-@scorer(metrics=[accuracy()])
+@scorer(metrics=[accuracy(), stderr()])
 def gpqa_scorer() -> Scorer:
     """Scorer for GPQA multiple choice - extracts letter answer from <answer> tags."""
 

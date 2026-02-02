@@ -52,7 +52,7 @@ def main():
         "-n", "--n-samples",
         type=int,
         default=10,
-        help="Number of samples from the dataset to evaluate (not repeated runs)",
+        help="Number of samples from the dataset to evaluate (0 = full dataset)",
     )
     parser.add_argument(
         "--seed",
@@ -66,11 +66,25 @@ def main():
         default=1,
         help="Number of times to run each sample (reduces variance via majority vote)",
     )
+    parser.add_argument(
+        "--repeat-input",
+        type=int,
+        default=1,
+        help="Number of times to repeat the question in the prompt",
+    )
+    parser.add_argument(
+        "--filler-tokens",
+        type=int,
+        default=0,
+        help="Number of filler tokens (periods) to add to the prompt",
+    )
 
     args = parser.parse_args()
 
-    # Default name if not provided
+    # Build eval name
     eval_name = args.name or f"{args.constraint}_{args.dataset}_{short_model_name(args.model)}"
+    if args.repeat_input > 1:
+        eval_name = f"{eval_name}_repeat{args.repeat_input}"
 
     print("Running evaluation...")
     print(f"  Name:       {eval_name}")
@@ -79,6 +93,8 @@ def main():
     print(f"  Constraint: {args.constraint}")
     print(f"  Samples:    {args.n_samples}")
     print(f"  Epochs:     {args.epochs}")
+    print(f"  Repeat:     {args.repeat_input}")
+    print(f"  Filler Tokens: {args.filler_tokens}")
     print(f"  Seed:       {args.seed}")
     print()
 
@@ -86,9 +102,11 @@ def main():
         constraint_name=args.constraint,
         model=args.model,
         dataset_name=args.dataset,
-        n_samples=args.n_samples,
+        n_samples=args.n_samples if args.n_samples > 0 else None,
         seed=args.seed,
         epochs=args.epochs,
+        repeat_input=args.repeat_input,
+        filler_tokens=args.filler_tokens,
         name=eval_name,
     )
 
