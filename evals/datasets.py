@@ -15,12 +15,16 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
+import random
 import re
 from typing import Any, Callable
 
 from inspect_ai.dataset import Sample, hf_dataset, Dataset
 from inspect_ai.scorer import Scorer, Score, Target, accuracy, scorer
 from inspect_ai.solver import TaskState
+
+# Letters for multiple choice options
+ANSWER_LETTERS = ["A", "B", "C", "D"]
 
 
 # ============ GSM8K ============
@@ -32,23 +36,27 @@ def gsm8k_record_to_sample(record: dict) -> Sample:
     return Sample(input=record["question"], target=target)
 
 
+def extract_number_answer(text: str) -> str | None:
+    """Extract numeric answer from model output."""
+    # <answer>X</answer> pattern (full tags, COT case)
+    match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
+    if match:
+        return match.group(1).strip().replace(",", "")
+
+    # X</answer> pattern (prefilled, no-COT case)
+    match = re.search(r"^(-?\d+(?:,\d+)*(?:\.\d+)?)\s*</answer>", text.strip())
+    if match:
+        return match.group(1).replace(",", "")
+
+    return None
+
+
 @scorer(metrics=[accuracy()])
 def gsm8k_scorer() -> Scorer:
     """Scorer for GSM8K that extracts answers from <answer> tags or last number."""
 
     async def score(state: TaskState, target: Target) -> Score:
-        text = state.output.completion
-
-        # Try <answer> tags first
-        answer_match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
-        if answer_match:
-            predicted = answer_match.group(1).strip()
-            # Clean up any commas in numbers
-            predicted = predicted.replace(",", "")
-        else:
-            # Fallback: extract last number from response
-            numbers = re.findall(r"-?\d+(?:,\d+)*(?:\.\d+)?", text)
-            predicted = numbers[-1].replace(",", "") if numbers else None
+        predicted = extract_number_answer(state.output.completion)
 
         if predicted is None:
             return Score(
@@ -57,9 +65,90 @@ def gsm8k_scorer() -> Scorer:
                 explanation=f"Could not extract answer. Expected: {target.text}",
             )
 
-        correct = predicted == target.text
         return Score(
-            value=correct,
+            value=(predicted == target.text),
+            answer=predicted,
+            explanation=f"Predicted: {predicted}, Expected: {target.text}",
+        )
+
+    return score
+
+
+# ============ GPQA ============
+
+def gpqa_record_to_sample(record: dict) -> Sample:
+    """Convert GPQA record to Sample with shuffled multiple choice options."""
+    # Collect all choices
+    choices = [
+        record["Correct Answer"],
+        record["Incorrect Answer 1"],
+        record["Incorrect Answer 2"],
+        record["Incorrect Answer 3"],
+    ]
+    # Clean up whitespace
+    choices = [c.strip() for c in choices]
+
+    # Shuffle choices (correct answer starts at index 0)
+    indices = list(range(4))
+    random.shuffle(indices)
+    shuffled_choices = [choices[i] for i in indices]
+
+    # Find where correct answer ended up
+    correct_index = indices.index(0)
+    target = ANSWER_LETTERS[correct_index]
+
+    # Format question with choices included in the input
+    question = record["Question"].strip()
+    formatted_choices = "\n".join(
+        f"{letter}. {choice}"
+        for letter, choice in zip(ANSWER_LETTERS, shuffled_choices)
+    )
+    full_input = f"{question}\n\n{formatted_choices}"
+
+    return Sample(
+        input=full_input,
+        choices=shuffled_choices,
+        target=target,
+        metadata={
+            "domain": record.get("High-level domain", ""),
+            "subdomain": record.get("Subdomain", ""),
+        },
+    )
+
+
+def extract_choice_answer(text: str) -> str | None:
+    """Extract multiple choice letter (A-D) from model output."""
+    # <answer>X</answer> pattern (full tags, COT case)
+    match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
+    if match:
+        answer = match.group(1).strip().upper()
+        if answer and answer[0] in ANSWER_LETTERS:
+            return answer[0]
+
+    # X</answer> pattern (prefilled, no-COT case)
+    match = re.search(r"^([A-D])\s*</answer>", text.strip(), re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+
+    return None
+
+
+@scorer(metrics=[accuracy()])
+def gpqa_scorer() -> Scorer:
+    """Scorer for GPQA multiple choice - extracts letter answer from <answer> tags."""
+
+    async def score(state: TaskState, target: Target) -> Score:
+        predicted = extract_choice_answer(state.output.completion)
+
+        if predicted is None:
+            return Score(
+                value=False,
+                answer=None,
+                explanation=f"Could not extract valid answer (A-D). Expected: {target.text}",
+            )
+
+        return Score(
+            value=(predicted == target.text),
             answer=predicted,
             explanation=f"Predicted: {predicted}, Expected: {target.text}",
         )
@@ -78,6 +167,13 @@ DATASETS: dict[str, DatasetRecipe] = {
         "split": "test",
         "record_to_sample": gsm8k_record_to_sample,
         "scorer": gsm8k_scorer,
+    },
+    "gpqa": {
+        "hf_path": "Idavidrein/gpqa",
+        "hf_name": "gpqa_diamond",  # Hardest subset, 198 questions
+        "split": "train",  # GPQA only has train split
+        "record_to_sample": gpqa_record_to_sample,
+        "scorer": gpqa_scorer,
     },
 }
 

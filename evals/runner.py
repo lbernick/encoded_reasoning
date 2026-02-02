@@ -6,8 +6,9 @@ This module contains the core run_eval function and system prompts.
 
 from pathlib import Path
 
-from inspect_ai import Task, eval as inspect_eval
-from inspect_ai.solver import generate, system_message, chain
+from inspect_ai import Task, eval as inspect_eval, Epochs
+from inspect_ai.model import GenerateConfig
+from inspect_ai.solver import generate, system_message, chain, assistant_message
 
 from .datasets import load_dataset, get_scorer
 from .constraints import get_constraint
@@ -23,7 +24,16 @@ LOG_DIR = PROJECT_ROOT / "logs"
 BASE_SYSTEM_PROMPT_COT = """
 Solve the following problem. Show your reasoning in <reasoning> tags, then give your final answer in <answer> tags.
 
-Example:
+For multiple choice questions, answer with just the letter (A, B, C, or D).
+For math problems, answer with just the number.
+
+Example (multiple choice):
+<reasoning>
+Step-by-step work here...
+</reasoning>
+<answer>B</answer>
+
+Example (math):
 <reasoning>
 Step-by-step work here...
 </reasoning>
@@ -33,8 +43,11 @@ Step-by-step work here...
 BASE_SYSTEM_PROMPT_NO_COT = """
 Solve the following problem. Give your final answer in <answer> tags.
 
+For multiple choice questions, answer with just the letter (A, B, C, or D).
+For math problems, answer with just the number.
+
 Example:
-<answer>42</answer>
+<answer>B</answer>
 """
 
 
@@ -46,6 +59,7 @@ def run_eval(
     dataset_name: str = "gsm8k",
     n_samples: int = 10,
     seed: int = 42,
+    epochs: int = 1,
     name: str | None = None,
 ):
     """Run an evaluation with a specified constraint.
@@ -56,6 +70,7 @@ def run_eval(
         constraint_name: Reasoning constraint to apply (e.g., "baseline", "no_cot")
         n_samples: Number of samples from the dataset to evaluate (not repeated runs)
         seed: Random seed for reproducibility
+        epochs: Number of times to run each sample (reduces variance via majority vote)
         name: Name for this eval run (shows in logs). Defaults to '{constraint}_{dataset}'
 
     Returns:
@@ -72,14 +87,29 @@ def run_eval(
     # Default name if not provided
     task_name = name or f"{constraint_name}_{dataset_name}"
 
+    # Build solver chain - add assistant prefill for no-COT to prevent reasoning
+    # Stop generation after </answer> to save tokens
+    gen_config = GenerateConfig(stop_seqs=["</answer>"])
+
+    if constraint.expects_reasoning:
+        solver = chain(
+            system_message(full_prompt),
+            generate(config=gen_config),
+        )
+    else:
+        # Prefill with "<answer>" to force immediate answer without reasoning
+        solver = chain(
+            system_message(full_prompt),
+            assistant_message("<answer>"),
+            generate(config=gen_config),
+        )
+
     task = Task(
         name=task_name,
         dataset=dataset,
-        solver=chain(
-            system_message(full_prompt),
-            generate(),
-        ),
+        solver=solver,
         scorer=scorer_fn(),
+        epochs=Epochs(epochs, "mode") if epochs > 1 else None,
     )
 
     results = inspect_eval(

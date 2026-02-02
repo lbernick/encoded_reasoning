@@ -60,6 +60,12 @@ def main():
         default=42,
         help="Random seed for reproducibility",
     )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=1,
+        help="Number of times to run each sample (reduces variance via majority vote)",
+    )
 
     args = parser.parse_args()
 
@@ -72,6 +78,7 @@ def main():
     print(f"  Dataset:    {args.dataset}")
     print(f"  Constraint: {args.constraint}")
     print(f"  Samples:    {args.n_samples}")
+    print(f"  Epochs:     {args.epochs}")
     print(f"  Seed:       {args.seed}")
     print()
 
@@ -81,6 +88,7 @@ def main():
         dataset_name=args.dataset,
         n_samples=args.n_samples,
         seed=args.seed,
+        epochs=args.epochs,
         name=eval_name,
     )
 

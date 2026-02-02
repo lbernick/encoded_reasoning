@@ -34,7 +34,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         system_prompt=(
             "Answer immediately with ONLY the final answer. "
             "Do NOT show any reasoning, steps, or explanation. "
-            "Just output the answer in <answer> tags."
+            "Output just the answer in <answer> tags, nothing else.."
         ),
         expects_reasoning=False,
     ),
