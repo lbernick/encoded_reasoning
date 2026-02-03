@@ -104,13 +104,12 @@ class MaskedHuggingFaceAPI(ModelAPI):
         allowed_ids = allowed_token_filter(self.tokenizer)
         allowed_ids.add(self.tokenizer.eos_token_id)
 
-        start_ids = self.tokenizer.encode("<reasoning>", add_special_tokens=False)
         end_ids = self.tokenizer.encode("</reasoning>", add_special_tokens=False)
 
         self.processor = MaskedReasoningProcessor(
+            tokenizer=self.tokenizer,
             allowed_ids=allowed_ids,
             vocab_size=len(self.tokenizer),
-            start_ids=start_ids,
             end_ids=end_ids,
         )
 

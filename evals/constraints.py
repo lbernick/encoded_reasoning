@@ -8,6 +8,8 @@ All other files reference this registry dynamically.
 from dataclasses import dataclass
 from typing import Callable
 
+import regex
+
 
 @dataclass
 class ReasoningConstraint:
@@ -27,8 +29,6 @@ class ReasoningConstraint:
 
 def emoji_token_filter(tokenizer) -> set[int]:
     """Return token IDs that decode to emoji characters."""
-    import regex
-
     emoji_pattern = regex.compile(r'\p{Emoji_Presentation}|\p{Extended_Pictographic}')
     return {
         tok_id for tok, tok_id in tokenizer.get_vocab().items()
