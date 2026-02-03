@@ -48,9 +48,11 @@ def constrained_reasoning_substring(reasoning: str, percent_reasoning_allowed: f
 
 def grade_output(text: str, correct_answer: str, percent_reasoning_allowed) -> float:
     reasoning, answer = parse_reasoning_and_answer(text)
+    if reasoning is None and answer is None:
+        return -1.0
+    elif reasoning is None or answer is None:
+        return -0.5
     reasoning = constrained_reasoning_substring(reasoning, percent_reasoning_allowed)
-    if reasoning is None or answer is None:
-        return 0.0
 
     # Check if reasoning contains any non-emoji characters or disallowed emojis
     allowed_char_count = 0

@@ -28,8 +28,8 @@ class FinetuningArgs:
 
     learning_rate: float = 5e-6
     batch_size: int = 4
-    num_train_epochs: int = 3
-    max_steps: int = -1 # Unlimited
+    num_train_epochs: int = 1
+    max_steps: int = 100 # -1 for unlimited
     gradient_accumulation_steps: int = 4
 
     # LoRA config
@@ -77,7 +77,6 @@ class Trainer:
             args.output_dir = f"./outputs/grpo_{args.dataset_name}"
 
         self.args = args
-        self.step = 0
         objective = OBJECTIVES[args.objective]
         self.system_prompt = objective.system_prompt
         self.reward_function = objective.reward_function
@@ -195,6 +194,7 @@ class Trainer:
         for i, output in enumerate(completions):
             correct_answer = correct_answers[i] if i < len(correct_answers) else ""
             generated_answer=output[0]["content"]
+            prompt = prompts[i][1] # First message is the system prompt, second message is the dataset question
             if self.args.use_curriculum_learning:
                 percent_reasoning_allowed = self.scheduler.get_value()
             else:
@@ -208,7 +208,11 @@ class Trainer:
                 # Log sample outputs periodically
                 if i == 0:  # Log first sample in batch
                     print(f"\n{'='*80}")
+<<<<<<< HEAD
                     print(f"PROMPT:\n{prompts[i]}")
+=======
+                    print(f"PROMPT:\n{prompt}")
+>>>>>>> 05306de (tweak starting config)
                     print(f"SAMPLE OUTPUT (Reward: {reward})")
                     print(f"{'='*80}")
                     print(f"Output:\n{output}")  # First 500 chars
@@ -216,15 +220,15 @@ class Trainer:
                     print(f"{'='*80}\n")
                     wandb.log({
                         "sample output": output,
+                        "prompt": prompt,
                         "expected_answer": correct_answer,
                         "reward": reward,
-                    }, step=self.step)
+                    })
             
             except Exception as e:
                 print(f"Error computing reward for sample {i}: {e}")
                 rewards.append(0.0)
         
-        self.step += len(completions)
         self.scheduler.step()
         if rewards:
             mean_reward = sum(rewards) / len(rewards)
@@ -236,7 +240,8 @@ class Trainer:
                 "reward/std": torch.tensor(rewards).std().item() if len(rewards) > 1 else 0.0,
                 "reward/min": min(rewards),
                 "reward/max": max(rewards),
-            }, step=self.step)
+                "percent_reasoning_allowed_to_be_unconstrained": percent_reasoning_allowed,
+            })
         
         return rewards
 
