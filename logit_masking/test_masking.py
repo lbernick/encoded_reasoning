@@ -54,10 +54,9 @@ def main():
     allowed_ids = emoji_token_filter(tokenizer)
     allowed_ids.add(tokenizer.eos_token_id)
 
-    start_ids = tokenizer.encode("<reasoning>", add_special_tokens=False)
     end_ids = tokenizer.encode("</reasoning>", add_special_tokens=False)
 
-    processor = MaskedReasoningProcessor(allowed_ids, len(tokenizer), start_ids, end_ids)
+    processor = MaskedReasoningProcessor(tokenizer, allowed_ids, len(tokenizer), end_ids)
 
     # Tokenize prompt and append <reasoning> prefix
     inputs = tokenizer(args.prompt, return_tensors="pt").to(model.device)
