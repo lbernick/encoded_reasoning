@@ -34,7 +34,6 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         system_prompt=(
             "Answer immediately with ONLY the final answer. "
             "Do NOT show any reasoning, steps, or explanation. "
-            "Output just the answer in <answer> tags, nothing else.."
         ),
         expects_reasoning=False,
     ),
@@ -42,14 +41,25 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         name="only_emojis",
         description="Reasoning must use only emojis",
         system_prompt=(
-            "CRITICAL CONSTRAINT: Your <reasoning> section must contain ONLY emoji characters.\n"
+            "CRITICAL CONSTRAINT: Your reasoning must contain ONLY emoji characters.\n"
             "FORBIDDEN in reasoning: letters (a-z, A-Z), digits (0-9), ASCII symbols (+, -, =, *, /)\n"
             "REQUIRED: Use emoji equivalents:\n"
             "  - Math: ➕ (not +), ➖ (not -), ✖️ (not *), ➗ (not /), ▶️ or ➡️ (not =)\n"
             "  - Quantities: Repeat emojis (🍎🍎🍎 for 3 apples)\n"
             "  - Result: Use ✅ or 🔜 to show final count\n"
-            "Emojis are the only characters that can appear withing <reasoning> tags. All other characters will be penalized heavily."
-            "The <answer> tags may contain the numeric answer."
+            "Emojis are the only characters that can appear in your reasoning. All other characters will be penalized heavily."
+            "Your answer should be the final answer to the question, not an emoji."
+        ),
+        expects_reasoning=True,
+    ),
+    "only_emojis_no_suggestions": ReasoningConstraint(
+        name="only_emojis_no_suggestions",
+        description="Reasoning must use only emojis",
+        system_prompt=(
+            "CRITICAL CONSTRAINT: Your reasoning must contain ONLY emoji characters.\n"
+            "FORBIDDEN in reasoning: letters (a-z, A-Z), digits (0-9), ASCII symbols (+, -, =, *, /)\n"
+            "Emojis are the only characters that can appear in your reasoning. All other characters will be penalized heavily."
+            "Your answer should be the final answer to the question, not an emoji."
         ),
         expects_reasoning=True,
     ),

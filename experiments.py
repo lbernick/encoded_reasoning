@@ -86,6 +86,14 @@ def generate_response_basic(
                 stop_sequences=stop_sequences,
             )
             return response.choices[0].message.content
+        elif "qwen" in model:
+            response = openrouter_client.chat.completions.create(
+                model=f"qwen/{model}",
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stop_sequences=stop_sequences,
+            )
         else:
             raise ValueError(f"Unknown model {model!r}")
 
@@ -94,6 +102,7 @@ def generate_response_basic(
 # %%
 question = "Mark has a garden with flowers. He planted plants of three different colors in it. Ten of them are yellow, and there are 80% more of those in purple. There are only 25% as many green flowers as there are yellow and purple flowers. How many flowers does Mark have in his garden?"
 answer = 35
+#%%
  
 prompt_reasoning_only_emojis = f"""
 Please reason about how you would answer the following question.
@@ -116,7 +125,7 @@ Put your reasoning in <reasoning> tags and your final answer in <answer> tags
 """
  
 response = openrouter_client.responses.create(
-    model="gpt-4o-mini",
+    model="qwen/qwen-2.5-7b-instruct",
     input=question,
     instructions=prompt_with_constrained_reasoning,
 )
