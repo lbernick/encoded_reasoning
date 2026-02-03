@@ -151,8 +151,8 @@ def insert_system_message(content: str, insert_at_beginning: bool = True, **para
 # ============ Evaluation Runner ============
 
 def build_task(
-    constraint_name: str | None,
-    dataset_name: str,
+    constraint_name: str = "unconstrained",
+    dataset_name: str = "gsm8k",
     seed: int = 42,
     epochs: int = 1,
     repeat_input: int = 1,
@@ -164,7 +164,7 @@ def build_task(
 
     Args:
         constraint_name: Reasoning constraint to apply (e.g., "unconstrained", "no_cot").
-                        Optional for two-stage mode.
+                         Defaults to "unconstrained".
         dataset_name: Dataset to use
         seed: Random seed for reproducibility
         epochs: Number of times to run each sample (reduces variance via majority vote)
@@ -179,12 +179,9 @@ def build_task(
     dataset = load_dataset(dataset_name, shuffle=True, seed=seed)
     scorer_fn = get_scorer(dataset_name)
 
-    if two_stage:
-        # Two-stage mode: reason first, then answer
-        reasoning_prompt = BASE_REASONING_PROMPT
-        if constraint_name:
-            constraint = get_constraint(constraint_name)
-            reasoning_prompt += constraint.system_prompt
+    if two_stage: # Reason first, then answer
+        constraint = get_constraint(constraint_name)
+        reasoning_prompt = BASE_REASONING_PROMPT + constraint.system_prompt
 
         task_name = name or f"2stage_{constraint_name}_{dataset_name}"
 
@@ -194,8 +191,7 @@ def build_task(
             insert_system_message(BASE_ANSWER_WITH_REASONING_PROMPT, insert_at_beginning=False),
             generate(),
         ]
-    else:
-        # Single-stage mode: reason and answer in same generation
+    else: # reason and answer in same generation
         if not constraint_name:
             raise ValueError("constraint_name is required for single-stage mode")
 
@@ -206,15 +202,11 @@ def build_task(
         full_prompt = base_prompt + "\n" + constraint.system_prompt
 
         task_name = name or f"{constraint_name}_{dataset_name}"
-
-        # Build solver chain
         solvers = [system_message(full_prompt)]
 
-        # Optionally repeat the input n times
         if repeat_input > 1:
             solvers.append(repeat_input_solver(repeat_input))
 
-        # Optionally add filler tokens
         if filler_tokens > 0:
             solvers.append(filler_tokens_solver(filler_tokens))
 
@@ -234,7 +226,7 @@ def build_task(
 
 
 def run_eval(
-    constraint_name: str | None,
+    constraint_name: str = "unconstrained",
     model: str = "openrouter/openai/gpt-4o-mini",
     dataset_name: str = "gsm8k",
     n_samples: int | None = 10,
@@ -249,7 +241,7 @@ def run_eval(
 
     Args:
         constraint_name: Reasoning constraint to apply (e.g., "baseline", "no_cot").
-                        Optional for two-stage mode.
+                        Defaults to "unconstrained".
         model: Model to evaluate (OpenRouter format, e.g., "openrouter/openai/gpt-4o-mini")
         dataset_name: Dataset to use
         n_samples: Number of samples to evaluate (None = full dataset)
