@@ -27,14 +27,24 @@ class ReasoningConstraint:
     allowed_token_filter: Callable | None = None
 
 
-def emoji_token_filter(tokenizer) -> set[int]:
-    """Return token IDs that decode to emoji characters."""
-    emoji_pattern = regex.compile(r'\p{Emoji_Presentation}|\p{Extended_Pictographic}')
+def whitespace_token_filter(tokenizer) -> set[int]:
+    """Return token IDs that decode to only whitespace (spaces, newlines, tabs)."""
+    whitespace_pattern = regex.compile(r'^[\s]+$')
     return {
+        tok_id for tok, tok_id in tokenizer.get_vocab().items()
+        if whitespace_pattern.match(tokenizer.decode([tok_id]))
+    }
+
+
+def emoji_token_filter(tokenizer) -> set[int]:
+    """Return token IDs that decode to emoji or whitespace characters."""
+    emoji_pattern = regex.compile(r'\p{Emoji_Presentation}|\p{Extended_Pictographic}')
+    emojis = {
         tok_id for tok, tok_id in tokenizer.get_vocab().items()
         if emoji_pattern.search(tokenizer.decode([tok_id]))
         and not tokenizer.decode([tok_id]).isascii()
     }
+    return emojis | whitespace_token_filter(tokenizer)
 
 
 # ============ Constraint Registry (single source of truth) ============

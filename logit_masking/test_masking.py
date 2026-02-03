@@ -11,21 +11,11 @@ Usage:
 
 import argparse
 
-import regex
 import torch
 from transformers import LogitsProcessorList
 
 from logit_masking.processor import MaskedReasoningProcessor, load_model
-
-
-def emoji_token_filter(tokenizer) -> set[int]:
-    """Return token IDs that decode to emoji characters."""
-    emoji_pattern = regex.compile(r'\p{Emoji_Presentation}|\p{Extended_Pictographic}')
-    return {
-        tok_id for tok, tok_id in tokenizer.get_vocab().items()
-        if emoji_pattern.search(tokenizer.decode([tok_id]))
-        and not tokenizer.decode([tok_id]).isascii()
-    }
+from evals.constraints import emoji_token_filter
 
 
 def main():
