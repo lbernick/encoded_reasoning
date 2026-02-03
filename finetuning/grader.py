@@ -42,11 +42,13 @@ def parse_reasoning_and_answer(text: str) -> Tuple[str]:
     return reasoning, answer
 
 def constrained_reasoning_substring(reasoning: str, percent_reasoning_allowed: float) -> str:
+    # percent_reasoning_allowed is the percentage of reasoning allowed to be unconstrained
     i = math.floor(len(reasoning) * (1 - percent_reasoning_allowed))
     return reasoning[:i]
 
 def grade_output(text: str, correct_answer: str, percent_reasoning_allowed) -> float:
     reasoning, answer = parse_reasoning_and_answer(text)
+    reasoning = constrained_reasoning_substring(reasoning, percent_reasoning_allowed)
     if reasoning is None or answer is None:
         return 0.0
 
@@ -67,6 +69,8 @@ def grade_output(text: str, correct_answer: str, percent_reasoning_allowed) -> f
     if answer != correct_answer:
         return 0.0
     
+    if len(reasoning) == 0:
+        return 1.0
     return allowed_char_count / len(reasoning)
 
 def grade(sample: dict[str, Any], item: dict[str, Any]) -> float:

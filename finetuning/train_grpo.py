@@ -24,6 +24,8 @@ class FinetuningArgs:
     model_name: str = "Qwen/Qwen2.5-3B-Instruct"
     dataset_name: str = "simple_math"
     objective: str = "emoji"
+    use_curriculum_learning: bool = True
+
     learning_rate: float = 1e-5
     batch_size: int = 4
     num_train_epochs: int = 1
@@ -192,8 +194,11 @@ class Trainer:
         for i, output in enumerate(completions):
             correct_answer = correct_answers[i] if i < len(correct_answers) else ""
             generated_answer=output[0]["content"]
-            percent_reasoning_allowed = self.scheduler.get_value()
-            
+            if self.args.use_curriculum_learning:
+                percent_reasoning_allowed = self.scheduler.get_value()
+            else:
+                percent_reasoning_allowed = 0
+
             try:
                 # Get correct answer for this example
                 reward = self.reward_function(generated_answer, correct_answer, percent_reasoning_allowed)
