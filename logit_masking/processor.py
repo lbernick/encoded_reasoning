@@ -186,9 +186,9 @@ class MaskedReasoningProcessor(LogitsProcessor):
 
         if force:
             if skip:
-                logger.info(f"Forcing end tag: partial end tag detected, skipping {skip} tokens")
+                print(f"Forcing end tag: partial end tag detected, skipping {skip} tokens")
             else:
-                logger.info(f"Forcing end tag: hit max masked tokens ({self.max_masked_tokens})")
+                print(f"Forcing end tag: hit max masked tokens ({self.max_masked_tokens})")
             self._forcing_end = True
             self._force_step = skip + 1
             return scores + self.force_masks[skip].to(scores.device)

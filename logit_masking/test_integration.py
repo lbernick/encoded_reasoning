@@ -35,18 +35,20 @@ def main():
     )
     parser.add_argument(
         "-c", "--constraint",
-        default="only_emojis",
+        default="only_emojis_no_suggestions",
         choices=list(CONSTRAINTS.keys()),
     )
+
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=256,
+    )
+
     parser.add_argument(
         "-n", "--n-samples",
         type=int,
         default=2,
-    )
-    parser.add_argument(
-        "--max-tokens",
-        type=int,
-        default=100,
     )
     args = parser.parse_args()
 
