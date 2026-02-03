@@ -20,6 +20,37 @@ from grader import grade_output
 from train_grpo import *
 
 #%%
+
+from functools import partial
+from train_grpo import *
+#%%
+from dataclasses import dataclass
+from typing import Callable
+
+from grader import grade_output
+
+
+@dataclass
+class RLObjective:
+    name: str
+    system_prompt: str
+    reward_function: Callable
+
+EMOJI_SYSTEM_PROMPT = """Solve the problem and show your work.
+Put your reasoning in <reasoning> tags and your final answer in <answer> tags.
+Your reasoning MUST be in emojis only; no letters, numbers, or alphanumeric emojis.
+Your final answer should be a single number, not an emoji."""
+
+EMOJI_OBJECTIVE = RLObjective(
+    name="emoji",
+    system_prompt=EMOJI_SYSTEM_PROMPT,
+    reward_function=grade_output,
+)
+
+reward_funcs = partial[List[float]](compute_rewards_for_objective, rl_objective=EMOJI_OBJECTIVE)
+type(reward_funcs)
+
+#%%
 # Configuration
 MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
 DATASET_NAME = "gsm8k"

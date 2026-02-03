@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import re
 import torch
 import wandb
-import random
+from functools import partial
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Callable
@@ -16,7 +16,8 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 # Import our custom grader
 from grader import grade_output
-from gsm8k import extract_answer_from_gsm8k
+from register_datasets import DATASETS, prepare_dataset
+from constraints import RLObjective, OBJECTIVES
 
 # ============================================================================
 # CONFIGURATION
@@ -25,11 +26,8 @@ from gsm8k import extract_answer_from_gsm8k
 # Model and dataset
 MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
 DATASET_NAME = "simple_math"
-
-SYSTEM_PROMPT = """Solve the problem and show your work.
-Put your reasoning in <reasoning> tags and your final answer in <answer> tags.
-Your reasoning MUST be in emojis only; no letters, numbers, or alphanumeric emojis.
-Your final answer should be a single number, not an emoji."""
+OBJECTIVE = "emoji"
+RL_OBJECTIVE = OBJECTIVES[OBJECTIVE]
 
 # Training hyperparameters
 OUTPUT_DIR = f"./outputs/grpo_{DATASET_NAME}"
@@ -52,95 +50,8 @@ TEMPERATURE = 0.7
 # Logging
 LOG_EVERY_N_STEPS = 10
 SAVE_EVERY_N_STEPS = 50
-WANDB_PROJECT = "gsm8k-grpo"
+WANDB_PROJECT = f"{DATASET_NAME}-grpo"
 WANDB_RUN_NAME = f"{MODEL_NAME.split('/')[-1]}-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
-
-# ============================================================================
-# DATASET PREPARATION
-# ===========================================================================
-
-@dataclass
-class CustomDataset:
-    name: str
-    format_func: Callable
-    config: str = None
-    split: str = None
-    data_files: str = None
-
-def format_gsm8k(example):
-    question = example["question"]
-    answer = extract_answer_from_gsm8k(example["answer"])
-    return question, answer
-
-def format_simple(example):
-    return example["question"], example["answer"]
-
-GSM8K = CustomDataset(
-    name="gsm8k",
-    config="main",
-    split="train",
-    format_func=format_gsm8k,
-)
-SIMPLE_MATH = CustomDataset(
-    name="simple_math",
-    data_files="finetuning/data/simple_math_problems.json",
-    format_func=format_simple,
-)
-
-DATASETS = {
-    "gsm8k": GSM8K,
-    "simple_math": SIMPLE_MATH,
-}
-
-def create_conversation(question: str, system_prompt: str) -> List[Dict[str, str]]:
-    return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": question},
-    ]
-
-
-def prepare_dataset(custom_dataset, n_samples: int | None):
-    """Load and format GSM8K dataset for training."""
-    print(f"Loading {custom_dataset.name} dataset...")
-    if custom_dataset.data_files:
-        dataset = load_dataset("json", data_files=custom_dataset.data_files)["train"]
-    else:
-        dataset = load_dataset(custom_dataset.name, custom_dataset.config, split=custom_dataset.split)
-
-    if n_samples is not None:
-        indices = random.sample(range(len(dataset)), min(n_samples, len(dataset)))
-        dataset = dataset.select(indices)
-    
-    print(f"Dataset loaded: {len(dataset)} examples")
-    
-    # Format dataset for TRL
-    def format_example(example):
-        """Format a single GSM8K example."""
-        # Extract question and answer (GSM8K-specific)
-        question, answer = custom_dataset.format_func(example)
-        conversation = create_conversation(question, SYSTEM_PROMPT)
-        
-        return {
-            "prompt": conversation,  # Store as conversation format
-            "answer": answer,  # Store for reward function
-        }
-    
-    formatted_dataset = dataset.map(format_example, remove_columns=dataset.column_names)
-    
-    # Print a sample
-    print("\n" + "="*80)
-    print("SAMPLE FORMATTED EXAMPLE:")
-    print("="*80)
-    sample = formatted_dataset[0]
-    print("Conversation:")
-    for msg in sample['prompt']:
-        print(f"  [{msg['role']}]: {msg['content']}")
-    print(f"\nExpected answer: {sample['answer']}")
-    print("="*80 + "\n")
-    
-    return formatted_dataset
-
 
 # ============================================================================
 # REWARD FUNCTION
@@ -169,7 +80,7 @@ def compute_rewards(completions: List[str], **kwargs) -> List[float]:
             
             # Use our grader function
             generated_answer=output[0]["content"]
-            reward = grade_output(generated_answer, correct_answer)
+            reward = RL_OBJECTIVE.reward_function(generated_answer, correct_answer)
             rewards.append(reward)
             
             # Log sample outputs periodically
@@ -286,13 +197,12 @@ def main():
             "lora_r": LORA_R,
             "lora_alpha": LORA_ALPHA,
             "max_steps": MAX_STEPS,
-            "system_prompt": SYSTEM_PROMPT,
+            "system_prompt": RL_OBJECTIVE.system_prompt,
         }
     )
     
     # Prepare dataset
-    train_dataset = prepare_dataset(dataset_recipe, n_samples=16)
-    
+    train_dataset = prepare_dataset(dataset_recipe, RL_OBJECTIVE.system_prompt, n_samples=16)    
     # Setup model
     model, tokenizer = setup_model_and_tokenizer()
     
@@ -301,7 +211,6 @@ def main():
         output_dir=OUTPUT_DIR,
         num_train_epochs=NUM_TRAIN_EPOCHS,
         max_steps=MAX_STEPS,
-        #per_device_train_batch_size=BATCH_SIZE,
         gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
         learning_rate=LEARNING_RATE,
         logging_steps=LOG_EVERY_N_STEPS,
@@ -310,8 +219,6 @@ def main():
         report_to="wandb",
         remove_unused_columns=False,
         temperature=TEMPERATURE,
-        #max_new_tokens=MAX_NEW_TOKENS,
-
     )
     
     # Initialize trainer
