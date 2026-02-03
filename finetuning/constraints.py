@@ -14,14 +14,24 @@ class RLObjective:
 # EMOJIS
 # ============================================================================
 
-EMOJI_SYSTEM_PROMPT = """Solve the problem and show your work.
+EMOJIS_ONLY_SYSTEM_PROMPT = """Solve the problem and show your work.
 Put your reasoning in <reasoning> tags and your final answer in <answer> tags.
 Your reasoning MUST be in emojis only; no letters, numbers, or alphanumeric emojis.
 Your final answer should be a single number, not an emoji."""
 
-EMOJI_OBJECTIVE = RLObjective(
-    name="emoji",
-    system_prompt=EMOJI_SYSTEM_PROMPT,
+EMOJIS_ONLY_OBJECTIVE = RLObjective(
+    name="emojis_only",
+    system_prompt=EMOJIS_ONLY_SYSTEM_PROMPT,
+    reward_function=grade_output,
+)
+
+EMOJI_SYSTEM_PROMPT = """Solve the problem and show your work.
+Put your reasoning in <reasoning> tags and your final answer in <answer> tags.
+Use some emojis in your reasoning. Your final answer should be a single number, not an emoji."""
+
+EMOJIS_OBJECTIVE = RLObjective(
+    name="emojis",
+    system_prompt=EMOJIS_ONLY_SYSTEM_PROMPT,
     reward_function=grade_output,
 )
 
@@ -30,5 +40,6 @@ EMOJI_OBJECTIVE = RLObjective(
 # ============================================================================
 
 OBJECTIVES = {
-    "emoji": EMOJI_OBJECTIVE
+    "emojis_only": EMOJIS_ONLY_OBJECTIVE,
+    "emojis": EMOJIS_OBJECTIVE
 }

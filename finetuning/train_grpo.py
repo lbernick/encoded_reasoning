@@ -23,8 +23,8 @@ from constraints import RLObjective, OBJECTIVES
 class FinetuningArgs:
     model_name: str = "Qwen/Qwen2.5-3B-Instruct"
     dataset_name: str = "gsm8k"
-    objective: str = "emoji"
-    use_curriculum_learning: bool = True
+    objective: str = "emojis"
+    use_curriculum_learning: bool = False
 
     learning_rate: float = 5e-6
     batch_size: int = 4
@@ -208,11 +208,7 @@ class Trainer:
                 # Log sample outputs periodically
                 if i == 0:  # Log first sample in batch
                     print(f"\n{'='*80}")
-<<<<<<< HEAD
-                    print(f"PROMPT:\n{prompts[i]}")
-=======
                     print(f"PROMPT:\n{prompt}")
->>>>>>> 05306de (tweak starting config)
                     print(f"SAMPLE OUTPUT (Reward: {reward})")
                     print(f"{'='*80}")
                     print(f"Output:\n{output}")  # First 500 chars
