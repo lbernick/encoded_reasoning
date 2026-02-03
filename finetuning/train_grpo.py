@@ -27,7 +27,7 @@ class FinetuningArgs:
     learning_rate: float = 1e-5
     batch_size: int = 4
     num_train_epochs: int = 1
-    max_steps: int = 10
+    max_steps: int = 3
     gradient_accumulation_steps: int = 4
 
     # LoRA config
@@ -47,6 +47,23 @@ class FinetuningArgs:
     output_dir: str = None
 
 
+class HyperparamScheduler:
+    def __init__(self, initial_value, **kwargs):
+        self.initial_value = initial_value
+        self.kwargs = kwargs
+        self.step_count = 0
+    
+    def step(self):
+        self.step_count += 1
+        return self.get_value()
+    
+    def get_value(self):
+        final_value = self.kwargs.get('final_value', 0)
+        total_steps = self.kwargs['total_steps']
+        progress = min(self.step_count / total_steps, 1.0)
+        return self.initial_value + (final_value - self.initial_value) * progress
+
+
 class Trainer:
     def __init__(self, args: FinetuningArgs):
         model_name = args.model_name.split('/')[-1]
@@ -62,6 +79,7 @@ class Trainer:
         objective = OBJECTIVES[args.objective]
         self.system_prompt = objective.system_prompt
         self.reward_function = objective.reward_function
+        self.scheduler = HyperparamScheduler(initial_value=1, final_value=0, total_steps=args.max_steps)
 
     def setup_model_and_tokenizer(self):
         """Initialize model with 4-bit quantization and LoRA adapters."""
@@ -172,12 +190,13 @@ class Trainer:
         correct_answers = kwargs["answer"]
         
         for i, output in enumerate(completions):
+            correct_answer = correct_answers[i] if i < len(correct_answers) else ""
+            generated_answer=output[0]["content"]
+            percent_reasoning_allowed = self.scheduler.get_value()
+            
             try:
                 # Get correct answer for this example
-                correct_answer = correct_answers[i] if i < len(correct_answers) else ""
-                
-                generated_answer=output[0]["content"]
-                reward = self.reward_function(generated_answer, correct_answer)
+                reward = self.reward_function(generated_answer, correct_answer, percent_reasoning_allowed)
                 rewards.append(reward)
                 
                 # Log sample outputs periodically
@@ -199,6 +218,7 @@ class Trainer:
                 rewards.append(0.0)
         
         self.step += len(completions)
+        self.scheduler.step()
         if rewards:
             mean_reward = sum(rewards) / len(rewards)
             print(f"Batch rewards - Mean: {mean_reward:.3f}, Min: {min(rewards):.3f}, Max: {max(rewards):.3f}")
@@ -237,6 +257,7 @@ class Trainer:
         train_dataset = self.prepare_dataset(dataset_recipe, self.system_prompt, n_samples=16)    
         model, tokenizer = self.setup_model_and_tokenizer()
         
+        # https://huggingface.co/docs/trl/main/en/grpo_trainer#trl.GRPOConfig
         training_args = GRPOConfig(
             output_dir=self.args.output_dir,
             num_train_epochs=self.args.num_train_epochs,
@@ -251,6 +272,7 @@ class Trainer:
             temperature=self.args.temperature,
         )
         
+        # https://huggingface.co/docs/trl/main/en/grpo_trainer#trl.GRPOTrainer
         trainer = GRPOTrainer(
             model=model,
             args=training_args,

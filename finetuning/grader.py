@@ -1,5 +1,6 @@
 import re
-from typing import Any
+from typing import Any, Tuple
+import math
 
 
 def is_number_or_letter_emoji(char: str) -> bool:
@@ -30,19 +31,24 @@ def is_number_or_letter_emoji(char: str) -> bool:
 
     return False
 
-
-def grade_output(text: str, correct_answer: str) -> float:
+def parse_reasoning_and_answer(text: str) -> Tuple[str]:
     # Parse reasoning string from within <reasoning> tags
     reasoning_match = re.search(r"<reasoning>(.*?)</reasoning>", text, re.DOTALL)
-    if not reasoning_match:
-        return 0.0
-    reasoning = reasoning_match.group(1)
+    reasoning = reasoning_match.group(1) if reasoning_match else None
 
     # Parse answer string from within <answer> tags
     answer_match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
-    if not answer_match:
+    answer = answer_match.group(1).strip() if answer_match else None
+    return reasoning, answer
+
+def constrained_reasoning_substring(reasoning: str, percent_reasoning_allowed: float) -> str:
+    i = math.floor(len(reasoning) * (1 - percent_reasoning_allowed))
+    return reasoning[:i]
+
+def grade_output(text: str, correct_answer: str, percent_reasoning_allowed) -> float:
+    reasoning, answer = parse_reasoning_and_answer(text)
+    if reasoning is None or answer is None:
         return 0.0
-    answer = answer_match.group(1).strip()
 
     # Check if reasoning contains any non-emoji characters or disallowed emojis
     allowed_char_count = 0
@@ -63,10 +69,7 @@ def grade_output(text: str, correct_answer: str) -> float:
     
     return allowed_char_count / len(reasoning)
 
-    return 1.0
-
-
 def grade(sample: dict[str, Any], item: dict[str, Any]) -> float:
     correct_answer = item["answer"]
     output = sample["output_text"]
-    return grade_output(output, correct_answer)
+    return grade_output(output, correct_answer, 0)
