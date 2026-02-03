@@ -2,10 +2,15 @@
 CLI entry point for the constrained reasoning evaluation framework.
 
 Usage:
+    # Single-stage evaluations
     python -m evals --model openrouter/openai/gpt-4o-mini --dataset gsm8k -n 10
     python -m evals -m openrouter/openai/gpt-4o-mini -d gsm8k -c no_cot -n 50
     python -m evals -m openrouter/anthropic/claude-3.5-sonnet -d gsm8k -n 50 --seed 123
     python -m evals --name "baseline_gpt4o" -c baseline -n 100
+
+    # Two-stage evaluations (reason first, then answer)
+    python -m evals --two-stage -d gsm8k -n 10
+    python -m evals --two-stage -c encoded -d gsm8k -n 50
 """
 
 import argparse
@@ -42,9 +47,9 @@ def main():
     parser.add_argument(
         "-c",
         "--constraint",
-        required=True,
+        required=False,
         choices=list(CONSTRAINTS.keys()),
-        help="Reasoning constraint to apply",
+        help="Reasoning constraint to apply (required for single-stage, optional for two-stage)",
     )
     parser.add_argument(
         "--name",
@@ -74,33 +79,48 @@ def main():
         "--repeat-input",
         type=int,
         default=1,
-        help="Number of times to repeat the question in the prompt",
+        help="Number of times to repeat the question in the prompt (single-stage only)",
     )
     parser.add_argument(
         "--filler-tokens",
         type=int,
         default=0,
-        help="Number of filler tokens (periods) to add to the prompt",
+        help="Number of filler tokens (periods) to add to the prompt (single-stage only)",
+    )
+    parser.add_argument(
+        "--two-stage",
+        action="store_true",
+        help="Use two-stage evaluation: reason first (without answer), then answer",
     )
 
     args = parser.parse_args()
 
+    # Validate: single-stage requires constraint
+    if not args.two_stage and not args.constraint:
+        parser.error("--constraint is required for single-stage mode (or use --two-stage)")
+
     # Build eval name
-    eval_name = (
-        args.name or f"{args.constraint}_{args.dataset}_{short_model_name(args.model)}"
-    )
-    if args.repeat_input > 1:
-        eval_name = f"{eval_name}_repeat{args.repeat_input}"
+    if args.two_stage:
+        constraint_part = args.constraint or "unconstrained"
+        eval_name = args.name or f"2stage_{constraint_part}_{args.dataset}_{short_model_name(args.model)}"
+    else:
+        eval_name = (
+            args.name or f"{args.constraint}_{args.dataset}_{short_model_name(args.model)}"
+        )
+        if args.repeat_input > 1:
+            eval_name = f"{eval_name}_repeat{args.repeat_input}"
 
     print("Running evaluation...")
     print(f"  Name:       {eval_name}")
     print(f"  Model:      {args.model}")
     print(f"  Dataset:    {args.dataset}")
-    print(f"  Constraint: {args.constraint}")
+    print(f"  Constraint: {args.constraint or '(none)'}")
+    print(f"  Mode:       {'two-stage' if args.two_stage else 'single-stage'}")
     print(f"  Samples:    {args.n_samples}")
     print(f"  Epochs:     {args.epochs}")
-    print(f"  Repeat:     {args.repeat_input}")
-    print(f"  Filler Tokens: {args.filler_tokens}")
+    if not args.two_stage:
+        print(f"  Repeat:     {args.repeat_input}")
+        print(f"  Filler Tokens: {args.filler_tokens}")
     print(f"  Seed:       {args.seed}")
     print()
 
@@ -113,6 +133,7 @@ def main():
         epochs=args.epochs,
         repeat_input=args.repeat_input,
         filler_tokens=args.filler_tokens,
+        two_stage=args.two_stage,
         name=eval_name,
     )
 
