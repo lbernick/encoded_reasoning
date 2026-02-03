@@ -126,6 +126,18 @@ class MaskedReasoningProcessor(LogitsProcessor):
         """Decode the last n tokens to a string for tag detection."""
         return self.tokenizer.decode(input_ids[0, -n_tokens:].tolist())
 
+    def _end_tag_progress(self, tail: str) -> int:
+        """Return how many end_ids tokens the model has already produced.
+
+        Checks if the tail ends with a prefix of the end tag and returns
+        the number of end_ids tokens that prefix corresponds to.
+        Returns 0 if no partial end tag is detected.
+        """
+        for i in range(len(self.end_tag) - 1, 0, -1):
+            if tail.endswith(self.end_tag[:i]):
+                return len(self.tokenizer.encode(self.end_tag[:i], add_special_tokens=False))
+        return 0
+
     def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
         """Apply logit mask based on whether generation is inside reasoning tags.
 
@@ -168,17 +180,17 @@ class MaskedReasoningProcessor(LogitsProcessor):
             print(f"[mask step {self._masked_count}] top unmasked is forbidden: {top_tokens}")
 
         # Force end sequence: max tokens hit or model started producing end tag
-        force = False
-        if self.max_masked_tokens is not None and self._masked_count >= self.max_masked_tokens:
-            print(f"Forcing end tag: hit max masked tokens ({self.max_masked_tokens})")
-            force = True
-        elif any(tail.endswith(self.end_tag[:i]) for i in range(1, len(self.end_tag))):
-            print(f"Forcing end tag: partial end tag detected in tail")
-            force = True
+        # skip = number of end_ids tokens already produced by the model
+        skip = self._end_tag_progress(tail)
+        force = skip > 0 or (self.max_masked_tokens is not None and self._masked_count >= self.max_masked_tokens)
 
         if force:
+            if skip:
+                logger.info(f"Forcing end tag: partial end tag detected, skipping {skip} tokens")
+            else:
+                logger.info(f"Forcing end tag: hit max masked tokens ({self.max_masked_tokens})")
             self._forcing_end = True
-            self._force_step = 1
-            return scores + self.force_masks[0].to(scores.device)
+            self._force_step = skip + 1
+            return scores + self.force_masks[skip].to(scores.device)
 
         return scores + self.allowed_mask.to(scores.device)
