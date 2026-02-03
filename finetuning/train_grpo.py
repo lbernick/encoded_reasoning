@@ -18,6 +18,7 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 from register_datasets import DATASETS, DatasetRecipe
 from constraints import RLObjective, OBJECTIVES
+from huggingface_hub import login
 
 @dataclass
 class FinetuningArgs:
@@ -295,6 +296,12 @@ class Trainer:
             
             print(f"\nSaving model to {self.args.output_dir}")
             trainer.save_model(self.args.output_dir)
+            trainer.push_to_hub(
+                repo_id=f"lbernick/{self.args.wandb_project}",
+                commit_message=self.args.wandb_run_name,
+                private=True,
+                blocking=True  # Wait for upload to complete
+            )
         finally:
             wandb.finish()
         
@@ -305,6 +312,7 @@ class Trainer:
 
 if __name__ == "__main__":
     load_dotenv()
+    login()
     args = FinetuningArgs()
     trainer = Trainer(args)
     trainer.train()
