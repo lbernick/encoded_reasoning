@@ -4,6 +4,7 @@ Test script for iterating on emoji-only reasoning prompts.
 
 import os
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import httpx
@@ -121,6 +122,7 @@ def has_non_emoji(response: str) -> tuple[bool, str, list[str]]:
     Returns (has_non_emoji, reasoning_content, list_of_violations)
     """
     import re
+
     reasoning_match = re.search(r"<reasoning>(.*?)</reasoning>", response, re.DOTALL)
     if not reasoning_match:
         return True, "[NO REASONING FOUND]", ["no reasoning tags"]
@@ -151,7 +153,7 @@ def has_non_emoji(response: str) -> tuple[bool, str, list[str]]:
 def test_prompt(prompt_name: str, prompt: str, problem: str):
     """Test a single prompt with a problem."""
     full_system = BASE_PROMPT + "\n" + prompt
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Prompt: {prompt_name}")
     print(f"Problem: {problem}")
     print("-" * 60)
@@ -172,15 +174,23 @@ def test_prompt(prompt_name: str, prompt: str, problem: str):
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--prompt", "-p", default="original",
-                       choices=list(PROMPTS_TO_TEST.keys()))
-    parser.add_argument("--problem", "-n", type=int, default=0,
-                       help="Problem index (0-3)")
-    parser.add_argument("--all-problems", "-a", action="store_true",
-                       help="Test all problems with the selected prompt")
-    parser.add_argument("--all-prompts", action="store_true",
-                       help="Test all prompts with problem 0")
+    parser.add_argument(
+        "--prompt", "-p", default="original", choices=list(PROMPTS_TO_TEST.keys())
+    )
+    parser.add_argument(
+        "--problem", "-n", type=int, default=0, help="Problem index (0-3)"
+    )
+    parser.add_argument(
+        "--all-problems",
+        "-a",
+        action="store_true",
+        help="Test all problems with the selected prompt",
+    )
+    parser.add_argument(
+        "--all-prompts", action="store_true", help="Test all prompts with problem 0"
+    )
     args = parser.parse_args()
 
     if args.all_prompts:

@@ -11,7 +11,17 @@ from typing import Any
 
 from inspect_ai import Task, eval as inspect_eval, Epochs
 from inspect_ai.model import ChatMessageUser, ChatMessageSystem
-from inspect_ai.solver import generate, system_message, user_message, chain, assistant_message, solver, Solver, TaskState, Generate
+from inspect_ai.solver import (
+    generate,
+    system_message,
+    user_message,
+    chain,
+    assistant_message,
+    solver,
+    Solver,
+    TaskState,
+    Generate,
+)
 
 from .datasets import load_dataset, get_scorer
 from .constraints import get_constraint
@@ -45,26 +55,28 @@ Now, please answer the question immediately, without showing reasoning. Your ans
 
 
 @solver
-def insert_system_message(content: str, insert_at_beginning=True, **params: Any) -> Solver:
-    """Solver which inserts a user message at the beginning of the conversation.
-    """
+def insert_system_message(
+    content: str, insert_at_beginning=True, **params: Any
+) -> Solver:
+    """Solver which inserts a user message at the beginning of the conversation."""
 
     async def solve(state: TaskState, generate: Generate) -> TaskState:
         kwargs = state.metadata | state.store._data | params
         if insert_at_beginning:
             state.messages.insert(
-                0,
-                ChatMessageSystem(
-                    content=content, model=state.model.name
-                )
+                0, ChatMessageSystem(content=content, model=state.model.name)
             )
         else:
-            state.messages.append(ChatMessageSystem(content=content, model=state.model.name))
+            state.messages.append(
+                ChatMessageSystem(content=content, model=state.model.name)
+            )
         return state
 
     return solve
 
+
 # ============ Evaluation Runner ============
+
 
 def build_task(
     constraint_name: str | None,
@@ -98,8 +110,10 @@ def build_task(
     solvers = [
         insert_system_message(reasoning_prompt),
         generate(),
-        insert_system_message(BASE_ANSWER_WITH_REASONING_PROMPT, insert_at_beginning=False),
-        #assistant_message("ANSWER:"),
+        insert_system_message(
+            BASE_ANSWER_WITH_REASONING_PROMPT, insert_at_beginning=False
+        ),
+        # assistant_message("ANSWER:"),
         generate(),
     ]
 
@@ -157,6 +171,7 @@ def run_eval(
 
     return results
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run constrained reasoning evaluations",
@@ -164,18 +179,21 @@ def main():
     )
 
     parser.add_argument(
-        "-m", "--model",
+        "-m",
+        "--model",
         default="openrouter/openai/gpt-4o-mini",
         help="Model to evaluate (OpenRouter format)",
     )
     parser.add_argument(
-        "-d", "--dataset",
+        "-d",
+        "--dataset",
         default="gsm8k",
         choices=list(DATASETS.keys()),
         help="Dataset to use",
     )
     parser.add_argument(
-        "-c", "--constraint",
+        "-c",
+        "--constraint",
         required=False,
         choices=list(CONSTRAINTS.keys()),
         help="Reasoning constraint to apply",
@@ -186,7 +204,8 @@ def main():
         help="Name for this eval run (shows in logs). Defaults to '{constraint}_{dataset}'",
     )
     parser.add_argument(
-        "-n", "--n-samples",
+        "-n",
+        "--n-samples",
         type=int,
         default=10,
         help="Number of samples from the dataset to evaluate (0 = full dataset)",
@@ -207,7 +226,9 @@ def main():
     args = parser.parse_args()
 
     # Build eval name
-    eval_name = args.name or f"{args.constraint}_{args.dataset}_{short_model_name(args.model)}"
+    eval_name = (
+        args.name or f"{args.constraint}_{args.dataset}_{short_model_name(args.model)}"
+    )
 
     print("Running evaluation...")
     print(f"  Name:       {eval_name}")
@@ -230,6 +251,7 @@ def main():
     )
 
     return results
+
 
 if __name__ == "__main__":
     main()

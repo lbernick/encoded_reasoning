@@ -27,18 +27,21 @@ def main():
     )
 
     parser.add_argument(
-        "-m", "--model",
+        "-m",
+        "--model",
         default="openrouter/openai/gpt-4o-mini",
         help="Model to evaluate (OpenRouter format)",
     )
     parser.add_argument(
-        "-d", "--dataset",
+        "-d",
+        "--dataset",
         default="gsm8k",
         choices=list(DATASETS.keys()),
         help="Dataset to use",
     )
     parser.add_argument(
-        "-c", "--constraint",
+        "-c",
+        "--constraint",
         required=True,
         choices=list(CONSTRAINTS.keys()),
         help="Reasoning constraint to apply",
@@ -49,7 +52,8 @@ def main():
         help="Name for this eval run (shows in logs). Defaults to '{constraint}_{dataset}'",
     )
     parser.add_argument(
-        "-n", "--n-samples",
+        "-n",
+        "--n-samples",
         type=int,
         default=10,
         help="Number of samples from the dataset to evaluate (0 = full dataset)",
@@ -82,7 +86,9 @@ def main():
     args = parser.parse_args()
 
     # Build eval name
-    eval_name = args.name or f"{args.constraint}_{args.dataset}_{short_model_name(args.model)}"
+    eval_name = (
+        args.name or f"{args.constraint}_{args.dataset}_{short_model_name(args.model)}"
+    )
     if args.repeat_input > 1:
         eval_name = f"{eval_name}_repeat{args.repeat_input}"
 

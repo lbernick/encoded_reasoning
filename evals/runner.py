@@ -8,7 +8,14 @@ from pathlib import Path
 
 from inspect_ai import Task, eval as inspect_eval, Epochs
 
-from inspect_ai.solver import generate, system_message, chain, assistant_message, solver, TaskState
+from inspect_ai.solver import (
+    generate,
+    system_message,
+    chain,
+    assistant_message,
+    solver,
+    TaskState,
+)
 
 from .datasets import load_dataset, get_scorer
 from .constraints import get_constraint
@@ -17,11 +24,13 @@ from .constraints import get_constraint
 @solver
 def repeat_input_solver(n: int):
     """Solver that repeats the user input n times."""
+
     async def solve(state: TaskState, generate):
         if n > 1 and state.messages:
             # Create new message list to avoid mutating shared message objects
             # (which can cause all samples to have the same question)
             from copy import copy
+
             new_messages = []
             for msg in state.messages:
                 if msg.role == "user" and isinstance(msg.content, str):
@@ -33,17 +42,20 @@ def repeat_input_solver(n: int):
                     new_messages.append(msg)
             state.messages = new_messages
         return state
+
     return solve
 
 
 @solver
 def filler_tokens_solver(n: int):
     """Solver that adds n filler tokens (periods) to the user prompt."""
+
     async def solve(state: TaskState, generate):
         if n > 0 and state.messages:
             # Create new message list to avoid mutating shared message objects
             # (which can cause all samples to have the same question)
             from copy import copy
+
             new_messages = []
             for msg in state.messages:
                 if msg.role == "user" and isinstance(msg.content, str):
@@ -55,6 +67,7 @@ def filler_tokens_solver(n: int):
                     new_messages.append(msg)
             state.messages = new_messages
         return state
+
     return solve
 
 
@@ -97,6 +110,7 @@ Example:
 
 # ============ Evaluation Runner ============
 
+
 def build_task(
     constraint_name: str,
     dataset_name: str,
@@ -125,7 +139,11 @@ def build_task(
     constraint = get_constraint(constraint_name)
 
     # Choose base prompt based on whether constraint expects reasoning
-    base_prompt = BASE_SYSTEM_PROMPT_COT if constraint.expects_reasoning else BASE_SYSTEM_PROMPT_NO_COT
+    base_prompt = (
+        BASE_SYSTEM_PROMPT_COT
+        if constraint.expects_reasoning
+        else BASE_SYSTEM_PROMPT_NO_COT
+    )
 
     full_prompt = base_prompt + "\n" + constraint.system_prompt
     # Default name (CLI adds _repeatN suffix if needed)

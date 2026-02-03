@@ -23,13 +23,15 @@ def main():
         help="Model to plot results for",
     )
     parser.add_argument(
-        "-d", "--dataset",
+        "-d",
+        "--dataset",
         choices=["gsm8k", "gpqa"],
         default="gsm8k",
         help="Dataset to plot results for",
     )
     parser.add_argument(
-        "-o", "--output",
+        "-o",
+        "--output",
         help="Output file path (defaults to {model}_{dataset}_all_experiments.png)",
     )
 

@@ -13,6 +13,7 @@ Each dataset defines:
 # (Inspect reads OPENROUTER_API_KEY at import time)
 import os
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import random
@@ -28,6 +29,7 @@ ANSWER_LETTERS = ["A", "B", "C", "D"]
 
 
 # ============ GSM8K ============
+
 
 def gsm8k_record_to_sample(record: dict) -> Sample:
     """Convert GSM8K record to Sample, extracting numeric answer after ####."""
@@ -77,6 +79,7 @@ def gsm8k_scorer() -> Scorer:
 
 
 # ============ GPQA ============
+
 
 def gpqa_record_to_sample(record: dict) -> Sample:
     """Convert GPQA record to Sample with shuffled multiple choice options."""
