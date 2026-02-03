@@ -123,16 +123,19 @@ class MaskedReasoningProcessor(LogitsProcessor):
         return 0
 
     def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
+        print("debugging")
         # End sequence just completed → stop masking
         if input_ids.shape[-1] >= len(self.end_ids):
             if input_ids[0, -len(self.end_ids):].tolist() == self.end_ids:
                 self.mask_on = False
+                print("Mask is off!")
                 return scores
 
         # Start sequence just completed → start masking
         if not self.mask_on and input_ids.shape[-1] >= len(self.start_ids):
             if input_ids[0, -len(self.start_ids):].tolist() == self.start_ids:
                 self.mask_on = True
+                print("Mask is on!")
 
         if not self.mask_on:
             return scores
@@ -146,6 +149,7 @@ class MaskedReasoningProcessor(LogitsProcessor):
 
         # Hit max masked tokens → force start of end sequence
         if self.max_masked_tokens is not None and self._masked_count >= self.max_masked_tokens:
+            print("Stopping masking because token limit is reached")
             return scores + self.force_masks[0].to(scores.device)
 
         # Normal masking: allowed tokens + first token of end sequence

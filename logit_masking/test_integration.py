@@ -25,7 +25,7 @@ def main():
     )
     parser.add_argument(
         "--model",
-        default="openai-community/gpt2",
+        default="Qwen/Qwen2.5-7B-Instruct",
         help="HuggingFace model name (without hf/ prefix — added automatically)",
     )
     parser.add_argument(
@@ -46,7 +46,7 @@ def main():
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=512,
+        default=100,
     )
     args = parser.parse_args()
 
