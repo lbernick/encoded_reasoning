@@ -28,7 +28,7 @@ def punctuation_token_filter(tokenizer) -> set[int]:
 
 def emoji_token_filter(tokenizer) -> set[int]:
     """Return token IDs that decode to emoji, whitespace, or punctuation."""
-    emoji_pattern = regex.compile(r'\p{Emoji_Presentation}|\p{Extended_Pictographic}')
+    emoji_pattern = regex.compile(r'\p{Emoji_Presentation}|\p{Extended_Pictographic}|\p{Emoji_Component}')
     emojis = {
         tok_id for tok, tok_id in tokenizer.get_vocab().items()
         if emoji_pattern.search(tokenizer.decode([tok_id]))
