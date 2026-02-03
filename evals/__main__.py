@@ -9,6 +9,7 @@ Usage:
 """
 
 import argparse
+import os
 
 from .runner import run_eval
 from .datasets import DATASETS
@@ -28,19 +29,19 @@ def main():
 
     parser.add_argument(
         "-m", "--model",
-        default="openrouter/openai/gpt-4o-mini",
+        default=os.environ.get("MODEL", "openrouter/openai/gpt-4o-mini"),
         help="Model to evaluate. Use 'hf/model-name' for local HuggingFace models "
              "(enables logit masking when constraint supports it), or OpenRouter format for API models.",
     )
     parser.add_argument(
         "-d", "--dataset",
-        default="gsm8k",
+        default=os.environ.get("DATASET", "gsm8k"),
         choices=list(DATASETS.keys()),
         help="Dataset to use",
     )
     parser.add_argument(
         "-c", "--constraint",
-        required=True,
+        default=os.environ.get("CONSTRAINT"),
         choices=list(CONSTRAINTS.keys()),
         help="Reasoning constraint to apply",
     )
@@ -52,19 +53,25 @@ def main():
     parser.add_argument(
         "-n", "--n-samples",
         type=int,
-        default=10,
+        default=int(os.environ.get("N_SAMPLES", 10)),
         help="Number of samples from the dataset to evaluate (0 = full dataset)",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=int(os.environ.get("MAX_TOKENS", 256)),
+        help="Maximum tokens for model generation",
     )
     parser.add_argument(
         "--seed",
         type=int,
-        default=42,
+        default=int(os.environ.get("SEED", 42)),
         help="Random seed for reproducibility",
     )
     parser.add_argument(
         "--epochs",
         type=int,
-        default=1,
+        default=int(os.environ.get("EPOCHS", 1)),
         help="Number of times to run each sample (reduces variance via majority vote)",
     )
     parser.add_argument(
@@ -93,6 +100,7 @@ def main():
     print(f"  Dataset:    {args.dataset}")
     print(f"  Constraint: {args.constraint}")
     print(f"  Samples:    {args.n_samples}")
+    print(f"  Max Tokens: {args.max_tokens}")
     print(f"  Epochs:     {args.epochs}")
     print(f"  Repeat:     {args.repeat_input}")
     print(f"  Filler Tokens: {args.filler_tokens}")
@@ -109,6 +117,7 @@ def main():
         repeat_input=args.repeat_input,
         filler_tokens=args.filler_tokens,
         name=eval_name,
+        max_tokens=args.max_tokens,
     )
 
     return results

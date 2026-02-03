@@ -92,12 +92,12 @@ class MaskedReasoningProcessor(LogitsProcessor):
         self.start_tag = start_tag
         self.end_tag = end_tag
 
-        # Allow any token whose decoded text is a prefix of end_tag
-        # so the model can close the block regardless of BPE merges
+        # Allow any token that ends with a prefix of end_tag
+        # (e.g. ',</' is allowed because it ends with '</' which starts '</reasoning>')
         end_tag_token_ids = {
             tok_id for tok_id in range(vocab_size)
             if (decoded := tokenizer.decode([tok_id]))
-            and self.end_tag.startswith(decoded)
+            and any(self.end_tag.startswith(decoded[-j:]) for j in range(1, len(decoded) + 1))
         }
 
         self.allowed_mask = self._build_mask(self.allowed_ids | end_tag_token_ids)
