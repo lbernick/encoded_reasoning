@@ -22,14 +22,14 @@ from constraints import RLObjective, OBJECTIVES
 @dataclass
 class FinetuningArgs:
     model_name: str = "Qwen/Qwen2.5-3B-Instruct"
-    dataset_name: str = "simple_math"
+    dataset_name: str = "gsm8k"
     objective: str = "emoji"
     use_curriculum_learning: bool = True
 
-    learning_rate: float = 1e-5
+    learning_rate: float = 5e-6
     batch_size: int = 4
-    num_train_epochs: int = 1
-    max_steps: int = 3
+    num_train_epochs: int = 3
+    max_steps: int = -1 # Unlimited
     gradient_accumulation_steps: int = 4
 
     # LoRA config
@@ -43,7 +43,7 @@ class FinetuningArgs:
 
     # Logging
     log_every_n_steps: int = 10
-    save_every_n_steps: int = 5
+    save_every_n_steps: int = 50
     wandb_project: str = None
     wandb_run_name: str = None
     output_dir: str = None
@@ -135,7 +135,7 @@ class Trainer:
         
         return model, tokenizer
 
-    def prepare_dataset(self, custom_dataset: DatasetRecipe, system_prompt: str, n_samples: int | None):
+    def prepare_dataset(self, custom_dataset: DatasetRecipe, system_prompt: str, n_samples: int = None):
         """Load and format the dataset for training."""
         print(f"Loading {custom_dataset.name} dataset...")
         if custom_dataset.data_files:
@@ -190,6 +190,7 @@ class Trainer:
         
         # Get correct answers from kwargs (passed through dataset)
         correct_answers = kwargs["answer"]
+        prompts = kwargs["prompts"]
         
         for i, output in enumerate(completions):
             correct_answer = correct_answers[i] if i < len(correct_answers) else ""
@@ -207,6 +208,7 @@ class Trainer:
                 # Log sample outputs periodically
                 if i == 0:  # Log first sample in batch
                     print(f"\n{'='*80}")
+                    print(f"PROMPT:\n{prompts[i]}")
                     print(f"SAMPLE OUTPUT (Reward: {reward})")
                     print(f"{'='*80}")
                     print(f"Output:\n{output}")  # First 500 chars
@@ -259,7 +261,7 @@ class Trainer:
             }
         )
         
-        train_dataset = self.prepare_dataset(dataset_recipe, self.system_prompt, n_samples=16)    
+        train_dataset = self.prepare_dataset(dataset_recipe, self.system_prompt)    
         model, tokenizer = self.setup_model_and_tokenizer()
         
         # https://huggingface.co/docs/trl/main/en/grpo_trainer#trl.GRPOConfig
