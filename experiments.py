@@ -173,6 +173,7 @@ def _generate_hf(
 # %%
 question = "Mark has a garden with flowers. He planted plants of three different colors in it. Ten of them are yellow, and there are 80% more of those in purple. There are only 25% as many green flowers as there are yellow and purple flowers. How many flowers does Mark have in his garden?"
 answer = 35
+#%%
  
 prompt_reasoning_only_emojis = f"""
 Please reason about how you would answer the following question.

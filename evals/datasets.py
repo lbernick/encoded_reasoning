@@ -38,6 +38,8 @@ def gsm8k_record_to_sample(record: dict) -> Sample:
 
 def extract_number_answer(text: str) -> str | None:
     """Extract numeric answer from model output."""
+    if "ANSWER:" in text:
+        return text.split("ANSWER:")[1].strip()
     # <answer>X</answer> pattern (full tags, COT case)
     match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
     if match:
