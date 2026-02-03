@@ -56,7 +56,7 @@ def main():
 
     end_ids = tokenizer.encode("</reasoning>", add_special_tokens=False)
 
-    processor = MaskedReasoningProcessor(tokenizer, allowed_ids, len(tokenizer), end_ids)
+    processor = MaskedReasoningProcessor(tokenizer, allowed_ids, model.config.vocab_size, end_ids)
 
     # Tokenize prompt and append <reasoning> prefix
     inputs = tokenizer(args.prompt, return_tensors="pt").to(model.device)

@@ -106,20 +106,28 @@ class MaskedReasoningProcessor(LogitsProcessor):
         self._force_step = 0
 
     def reset(self):
+        """Reset state between generations."""
         self.mask_on = False
         self._masked_count = 0
         self._forcing_end = False
         self._force_step = 0
 
     def _build_mask(self, allowed_ids: set[int]) -> torch.Tensor:
+        """Build a logit mask that zeroes allowed IDs and -infs everything else."""
         mask = torch.full((self.vocab_size,), float('-inf'))
         mask[list(allowed_ids)] = 0
         return mask
 
     def _decoded_tail(self, input_ids: torch.Tensor, n_tokens: int = 10) -> str:
+        """Decode the last n tokens to a string for tag detection."""
         return self.tokenizer.decode(input_ids[0, -n_tokens:].tolist())
 
     def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
+        """Apply logit mask based on whether generation is inside reasoning tags.
+
+        Returns scores unmodified outside tags, applies the allowed-token mask
+        inside tags, and forces the end-tag sequence when max_masked_tokens is hit.
+        """
         # Forcing end sequence token by token
         if self._forcing_end:
             step = self._force_step

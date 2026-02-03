@@ -109,7 +109,7 @@ class MaskedHuggingFaceAPI(ModelAPI):
         self.processor = MaskedReasoningProcessor(
             tokenizer=self.tokenizer,
             allowed_ids=allowed_ids,
-            vocab_size=len(self.tokenizer),
+            vocab_size=self.model.config.vocab_size,
             end_ids=end_ids,
         )
 
