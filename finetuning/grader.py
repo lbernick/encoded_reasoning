@@ -51,14 +51,14 @@ def grade_output(text: str, correct_answer: str, percent_reasoning_allowed) -> f
     if reasoning is None and answer is None:
         return -1.0
     elif reasoning is None or answer is None:
-        return -0.5
+        return -0.75
     reasoning = constrained_reasoning_substring(reasoning, percent_reasoning_allowed)
 
     # Check if reasoning contains any non-emoji characters or disallowed emojis
     allowed_char_count = 0
     for char in reasoning:
         if char.isspace():
-            allowed_char_count += 1
+            continue
         # Check if character is a regular ASCII character (letters, digits, punctuation)
         if ord(char) < 128:  # ASCII range
             continue
@@ -69,7 +69,7 @@ def grade_output(text: str, correct_answer: str, percent_reasoning_allowed) -> f
     
     # Check if answer matches correct_answer
     if answer != correct_answer:
-        return 0.0
+        return -0.5
     
     if len(reasoning) == 0:
         return 1.0

@@ -27,11 +27,12 @@ EMOJIS_ONLY_OBJECTIVE = RLObjective(
 
 EMOJI_SYSTEM_PROMPT = """Solve the problem and show your work.
 Put your reasoning in <reasoning> tags and your final answer in <answer> tags.
-Use some emojis in your reasoning. Your final answer should be a single number, not an emoji."""
+IMPORTANT: Use as many emojis as possible in your reasoning.
+Your final answer should be a single number, not an emoji."""
 
 EMOJIS_OBJECTIVE = RLObjective(
     name="emojis",
-    system_prompt=EMOJIS_ONLY_SYSTEM_PROMPT,
+    system_prompt=EMOJI_SYSTEM_PROMPT,
     reward_function=grade_output,
 )
 

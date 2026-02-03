@@ -212,7 +212,7 @@ class Trainer:
                     print(f"PROMPT:\n{prompt}")
                     print(f"SAMPLE OUTPUT (Reward: {reward})")
                     print(f"{'='*80}")
-                    print(f"Output:\n{output}")  # First 500 chars
+                    print(f"Output:\n{generated_answer}")
                     print(f"Expected answer: {correct_answer}")
                     print(f"{'='*80}\n")
                     wandb.log({
