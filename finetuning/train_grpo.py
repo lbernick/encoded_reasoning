@@ -63,10 +63,10 @@ WANDB_RUN_NAME = f"{MODEL_NAME.split('/')[-1]}-{datetime.now().strftime('%Y%m%d_
 @dataclass
 class CustomDataset:
     name: str
-    config: str
-    split: str
-    data_files: str
     format_func: Callable
+    config: str = None
+    split: str = None
+    data_files: str = None
 
 def format_gsm8k(example):
     question = example["question"]
@@ -80,11 +80,12 @@ GSM8K = CustomDataset(
     name="gsm8k",
     config="main",
     split="train",
-    format_func=format_gsm8k
+    format_func=format_gsm8k,
 )
 SIMPLE_MATH = CustomDataset(
     name="simple_math",
-    data_files="data/simple_math_problems.json",
+    data_files="finetuning/data/simple_math_problems.json",
+    format_func=format_simple,
 )
 
 DATASETS = {
@@ -103,7 +104,7 @@ def prepare_dataset(custom_dataset, n_samples: int | None):
     """Load and format GSM8K dataset for training."""
     print(f"Loading {custom_dataset.name} dataset...")
     if custom_dataset.data_files:
-        dataset = load_dataset("json", data_files=custom_dataset.data_files)
+        dataset = load_dataset("json", data_files=custom_dataset.data_files)["train"]
     else:
         dataset = load_dataset(custom_dataset.name, custom_dataset.config, split=custom_dataset.split)
 
@@ -134,7 +135,7 @@ def prepare_dataset(custom_dataset, n_samples: int | None):
     sample = formatted_dataset[0]
     print("Conversation:")
     for msg in sample['prompt']:
-        print(f"  [{msg['role']}]: {msg['content'][:100]}...")
+        print(f"  [{msg['role']}]: {msg['content']}")
     print(f"\nExpected answer: {sample['answer']}")
     print("="*80 + "\n")
     
@@ -225,17 +226,9 @@ def setup_model_and_tokenizer():
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-
-    # Set padding side based on model architecture
-    # Check if this is a decoder-only model
-    model_config = AutoConfig.from_pretrained(MODEL_NAME)
     
-    is_decoder_only = getattr(model_config, 'is_decoder', False) and not getattr(model_config, 'is_encoder_decoder', False)
-
-    if is_decoder_only:
-        tokenizer.padding_side = 'left'
-    else:
-        tokenizer.padding_side = 'right'
+    # Always use left padding for decoder-only models (AutoModelForCausalLM)
+    tokenizer.padding_side = 'left'
     
     # Load model with quantization
     model = AutoModelForCausalLM.from_pretrained(
