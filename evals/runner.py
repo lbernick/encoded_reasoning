@@ -10,7 +10,7 @@ from inspect_ai import Task, eval as inspect_eval, Epochs
 
 from inspect_ai.solver import generate, system_message, chain, assistant_message, solver, TaskState
 
-from inspect_ai.model import get_model
+from inspect_ai.model import get_model, GenerateConfig
 
 from .datasets import load_dataset, get_scorer
 from .constraints import get_constraint
@@ -184,6 +184,7 @@ def run_eval(
     repeat_input: int = 1,
     filler_tokens: int = 0,
     name: str | None = None,
+    max_tokens: int | None = None,
 ):
     """Run an evaluation with a specified constraint.
 
@@ -216,6 +217,10 @@ def run_eval(
 
     resolved_model = _resolve_model(model, constraint_name)
 
+    eval_kwargs = {}
+    if max_tokens is not None:
+        eval_kwargs["config"] = GenerateConfig(max_tokens=max_tokens)
+
     results = inspect_eval(
         task,
         model=resolved_model,
@@ -226,6 +231,7 @@ def run_eval(
             "dataset": dataset_name,
             "seed": seed,
         },
+        **eval_kwargs,
     )
 
     return results

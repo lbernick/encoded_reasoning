@@ -13,8 +13,8 @@ Usage:
 
 import argparse
 
-from evals.runner import run_eval
-from evals.constraints import CONSTRAINTS
+from evals.runner import run_eval, BASE_SYSTEM_PROMPT_COT, BASE_SYSTEM_PROMPT_NO_COT
+from evals.constraints import CONSTRAINTS, get_constraint
 from evals.datasets import DATASETS
 
 
@@ -43,9 +43,17 @@ def main():
         type=int,
         default=2,
     )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=512,
+    )
     args = parser.parse_args()
 
     model = f"hf/{args.model}"
+    constraint = get_constraint(args.constraint)
+    base_prompt = BASE_SYSTEM_PROMPT_COT if constraint.expects_reasoning else BASE_SYSTEM_PROMPT_NO_COT
+    full_prompt = base_prompt + "\n" + constraint.system_prompt
     name = f"test_integration_{args.constraint}_{args.dataset}"
 
     print("Integration test — logit-masked eval")
@@ -53,7 +61,9 @@ def main():
     print(f"  Dataset:    {args.dataset}")
     print(f"  Constraint: {args.constraint}")
     print(f"  Samples:    {args.n_samples}")
-    print()
+    print(f"  Max tokens: {args.max_tokens}")
+    print(f"\n--- System Prompt ---\n{full_prompt}")
+    print("--- End System Prompt ---\n")
 
     results = run_eval(
         constraint_name=args.constraint,
@@ -61,9 +71,9 @@ def main():
         dataset_name=args.dataset,
         n_samples=args.n_samples,
         name=name,
+        max_tokens=args.max_tokens,
     )
 
-    # Print basic results
     for log in results:
         print(f"Task: {log.eval.task}")
         print(f"Model: {log.eval.model}")
@@ -73,9 +83,9 @@ def main():
         if log.samples:
             for sample in log.samples:
                 print(f"\n--- Sample ---")
-                print(f"Input:  {sample.input[:120]}...")
+                print(f"Input:  {sample.input}")
                 print(f"Target: {sample.target}")
-                print(f"Output: {sample.output.completion[:300]}")
+                print(f"Output: {sample.output.completion}")
 
 
 if __name__ == "__main__":
