@@ -46,7 +46,7 @@ def load_model(model_name: str) -> tuple[AutoTokenizer, AutoModelForCausalLM]:
         model = AutoModelForCausalLM.from_pretrained(
             model_name, device_map="auto", load_in_8bit=True
         )
-        logger.info(f"Loaded {model_name} in 8-bit")
+        print(f"Loaded {model_name} in 8-bit")
     except Exception as e:
         logger.warning(f"8-bit loading failed ({e}), falling back to fp16")
         model = AutoModelForCausalLM.from_pretrained(
@@ -168,13 +168,13 @@ class MaskedReasoningProcessor(LogitsProcessor):
 
         # End tag completed → stop masking
         if self.mask_on and self.end_tag in tail:
-            logger.info(f"Masking off: end tag detected after {self._masked_count} tokens")
+            print(f"Masking off: end tag detected after {self._masked_count} tokens")
             self.mask_on = False
             return scores
 
         # Start tag appeared → start masking
         if not self.mask_on and self.start_tag in tail:
-            logger.info("Masking on: start tag detected")
+            print("Masking on: start tag detected")
             self.mask_on = True
 
         if not self.mask_on:
@@ -183,9 +183,10 @@ class MaskedReasoningProcessor(LogitsProcessor):
         self._masked_count += 1
 
         # Log what the model wants to produce before masking
-        top_ids = scores[0].topk(5).indices.tolist()
+        top_ids = scores[0].topk(1).indices.tolist()
         top_tokens = [(tid, self.tokenizer.decode([tid])) for tid in top_ids]
-        print(f"[mask step {self._masked_count}] top unmasked: {top_tokens}")
+        if self.allowed_mask[top_ids[0]] == float('-inf'):
+            print(f"[mask step {self._masked_count}] top unmasked is forbidden: {top_tokens}")
 
         # Force end sequence: max tokens hit or model started producing end tag
         # skip = number of end_ids tokens already produced by the model
@@ -194,9 +195,9 @@ class MaskedReasoningProcessor(LogitsProcessor):
 
         if force:
             if skip:
-                logger.info(f"Forcing end tag: partial end tag detected, skipping {skip} tokens")
+                print(f"Forcing end tag: partial end tag detected, skipping {skip} tokens")
             else:
-                logger.info(f"Forcing end tag: hit max masked tokens ({self.max_masked_tokens})")
+                print(f"Forcing end tag: hit max masked tokens ({self.max_masked_tokens})")
             self._forcing_end = True
             self._force_step = skip + 1
             return scores + self.force_masks[skip].to(scores.device)
