@@ -3,3 +3,5 @@ __pycache__
 .venv
 logs/
 .DS_Store
+wandb
+outputs

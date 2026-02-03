@@ -1,11 +1,14 @@
 
 
+from collections import namedtuple
+from dataclasses import dataclass
 import re
 import torch
 import wandb
+import random
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Callable
 from datasets import load_dataset
 from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from trl import GRPOConfig, GRPOTrainer
@@ -21,9 +24,7 @@ from gsm8k import extract_answer_from_gsm8k
 
 # Model and dataset
 MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
-DATASET_NAME = "gsm8k"
-DATASET_CONFIG = "main"
-DATASET_SPLIT = "train"
+DATASET_NAME = "simple_math"
 
 SYSTEM_PROMPT = """Solve the problem and show your work.
 Put your reasoning in <reasoning> tags and your final answer in <answer> tags.
@@ -31,11 +32,11 @@ Your reasoning MUST be in emojis only; no letters, numbers, or alphanumeric emoj
 Your final answer should be a single number, not an emoji."""
 
 # Training hyperparameters
-OUTPUT_DIR = "./outputs/grpo_gsm8k"
+OUTPUT_DIR = f"./outputs/grpo_{DATASET_NAME}"
 LEARNING_RATE = 1e-5
 BATCH_SIZE = 4
 NUM_TRAIN_EPOCHS = 1
-MAX_STEPS = 100  # Set to small number for initial testing
+MAX_STEPS = 10  # Set to small number for initial testing
 GRADIENT_ACCUMULATION_STEPS = 4
 
 # LoRA configuration
@@ -59,6 +60,38 @@ WANDB_RUN_NAME = f"{MODEL_NAME.split('/')[-1]}-{datetime.now().strftime('%Y%m%d_
 # DATASET PREPARATION
 # ===========================================================================
 
+@dataclass
+class CustomDataset:
+    name: str
+    config: str
+    split: str
+    data_files: str
+    format_func: Callable
+
+def format_gsm8k(example):
+    question = example["question"]
+    answer = extract_answer_from_gsm8k(example["answer"])
+    return question, answer
+
+def format_simple(example):
+    return example["question"], example["answer"]
+
+GSM8K = CustomDataset(
+    name="gsm8k",
+    config="main",
+    split="train",
+    format_func=format_gsm8k
+)
+SIMPLE_MATH = CustomDataset(
+    name="simple_math",
+    data_files="data/simple_math_problems.json",
+)
+
+DATASETS = {
+    "gsm8k": GSM8K,
+    "simple_math": SIMPLE_MATH,
+}
+
 def create_conversation(question: str, system_prompt: str) -> List[Dict[str, str]]:
     return [
         {"role": "system", "content": system_prompt},
@@ -66,10 +99,17 @@ def create_conversation(question: str, system_prompt: str) -> List[Dict[str, str
     ]
 
 
-def prepare_dataset(n_samples: int):
+def prepare_dataset(custom_dataset, n_samples: int | None):
     """Load and format GSM8K dataset for training."""
-    print(f"Loading {DATASET_NAME} dataset...")
-    dataset = load_dataset(DATASET_NAME, DATASET_CONFIG, split=DATASET_SPLIT)
+    print(f"Loading {custom_dataset.name} dataset...")
+    if custom_dataset.data_files:
+        dataset = load_dataset("json", data_files=custom_dataset.data_files)
+    else:
+        dataset = load_dataset(custom_dataset.name, custom_dataset.config, split=custom_dataset.split)
+
+    if n_samples is not None:
+        indices = random.sample(range(len(dataset)), min(n_samples, len(dataset)))
+        dataset = dataset.select(indices)
     
     print(f"Dataset loaded: {len(dataset)} examples")
     
@@ -77,12 +117,11 @@ def prepare_dataset(n_samples: int):
     def format_example(example):
         """Format a single GSM8K example."""
         # Extract question and answer (GSM8K-specific)
-        question = example["question"]
-        answer = extract_answer_from_gsm8k(example["answer"])
+        question, answer = custom_dataset.format_func(example)
         conversation = create_conversation(question, SYSTEM_PROMPT)
         
         return {
-            "query": conversation,  # Store as conversation format
+            "prompt": conversation,  # Store as conversation format
             "answer": answer,  # Store for reward function
         }
     
@@ -120,7 +159,7 @@ def compute_rewards(completions: List[str], **kwargs) -> List[float]:
     rewards = []
     
     # Get correct answers from kwargs (passed through dataset)
-    correct_answers = kwargs.get("answer", [])
+    correct_answers = kwargs["answer"]
     
     for i, output in enumerate(completions):
         try:
@@ -128,7 +167,8 @@ def compute_rewards(completions: List[str], **kwargs) -> List[float]:
             correct_answer = correct_answers[i] if i < len(correct_answers) else ""
             
             # Use our grader function
-            reward = grade_output(output, correct_answer)
+            generated_answer=output[0]["content"]
+            reward = grade_output(generated_answer, correct_answer)
             rewards.append(reward)
             
             # Log sample outputs periodically
@@ -136,9 +176,14 @@ def compute_rewards(completions: List[str], **kwargs) -> List[float]:
                 print(f"\n{'='*80}")
                 print(f"SAMPLE OUTPUT (Reward: {reward})")
                 print(f"{'='*80}")
-                print(f"Output:\n{output[:500]}...")  # First 500 chars
+                print(f"Output:\n{output}")  # First 500 chars
                 print(f"Expected answer: {correct_answer}")
                 print(f"{'='*80}\n")
+                # wandb.log({
+                #     "sample output": output,
+                #     "expected_answer": correct_answer,
+                #     "reward": reward,
+                # })
         
         except Exception as e:
             print(f"Error computing reward for sample {i}: {e}")
@@ -184,6 +229,7 @@ def setup_model_and_tokenizer():
     # Set padding side based on model architecture
     # Check if this is a decoder-only model
     model_config = AutoConfig.from_pretrained(MODEL_NAME)
+    
     is_decoder_only = getattr(model_config, 'is_decoder', False) and not getattr(model_config, 'is_encoder_decoder', False)
 
     if is_decoder_only:
@@ -233,7 +279,8 @@ def main():
     print("="*80)
     print("RL TRAINING WITH GRPO")
     print("="*80)
-    
+    dataset_recipe = DATASETS[DATASET_NAME]
+
     # Initialize wandb
     wandb.init(
         project=WANDB_PROJECT,
@@ -251,7 +298,7 @@ def main():
     )
     
     # Prepare dataset
-    train_dataset = prepare_dataset(n_samples=16)
+    train_dataset = prepare_dataset(dataset_recipe, n_samples=16)
     
     # Setup model
     model, tokenizer = setup_model_and_tokenizer()

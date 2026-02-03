@@ -17,6 +17,7 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 # Import our custom grader
 from grader import grade_output
+from train_grpo import *
 
 #%%
 # Configuration
@@ -114,6 +115,15 @@ formatted_dataset = dataset.map(format_example, remove_columns=dataset.column_na
 print(f"\n✓ Formatted {len(formatted_dataset)} examples")
 print("="*80 + "\n")
 
+#%%
+# import importlib
+# from train_grpo import *
+
+dataset = prepare_dataset(5)
+
+#%%
+model, tokenizer = setup_model_and_tokenizer()
+
 # %%
 # Cell 4: Test Reward Function on Sample Outputs
 print("="*80)
@@ -152,6 +162,69 @@ for i, test in enumerate(test_cases, 1):
     print(f"   Reward: {reward} {status}\n")
 
 print("="*80 + "\n")
+#%%
+prompts = [
+    [{"role": "assistant", "content": "What is the result of (1 + 2) * 4?"}],
+    [{"role": "assistant", "content": "What is the result of (3 + 1) * 2?"}],
+]
+completions = [
+    [{"role": "assistant", "content": "<think>The sum of 1 and 2 is 3, which we multiply by 4 to get 12.</think><answer>(1 + 2) * 4 = 12</answer>"}],
+    [{"role": "assistant", "content": "The sum of 3 and 1 is 4, which we multiply by 2 to get 8. So (3 + 1) * 2 = 8."}],
+]
+
+#%%
+def compute_rewards(completions: List[str], **kwargs) -> List[float]:
+    """
+    Custom reward function for GRPO training.
+    
+    Args:
+        completions: List of model completions to evaluate
+        **kwargs: Additional data (contains 'answer' field with correct answers)
+    
+    Returns:
+        List of reward values
+    """
+    rewards = []
+    
+    # Get correct answers from kwargs (passed through dataset)
+    correct_answers = kwargs.get("answer", [])
+
+    
+    for i, output in enumerate(completions):
+        try:
+            print(f"{output=}")
+            print(f"{correct_answers[i]=}")
+            # Get correct answer for this example
+            correct_answer = correct_answers[i] if i < len(correct_answers) else ""
+            
+            # Use our grader function
+            generated_answer=output[0]["content"]
+            reward = grade_output(generated_answer, correct_answer)
+            rewards.append(reward)
+            
+            # Log sample outputs periodically
+            if i == 0:  # Log first sample in batch
+                print(f"\n{'='*80}")
+                print(f"SAMPLE OUTPUT (Reward: {reward})")
+                print(f"{'='*80}")
+                print(f"Output:\n{output[:500]}...")  # First 500 chars
+                print(f"Expected answer: {correct_answer}")
+                print(f"{'='*80}\n")
+        
+        except Exception as e:
+            print(f"Error computing reward for sample {i}: {e}")
+            rewards.append(0.0)
+    
+    # Log reward statistics
+    if rewards:
+        mean_reward = sum(rewards) / len(rewards)
+        print(f"Batch rewards - Mean: {mean_reward:.3f}, Min: {min(rewards):.3f}, Max: {max(rewards):.3f}")
+    
+    return rewards
+
+compute_rewards(prompts=prompts, completions=completions, answer=["1", "2"])
+#%%
+dataset[0]
 
 # %%
 # Cell 5: Initialize Model and Tokenizer
