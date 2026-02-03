@@ -70,7 +70,14 @@ class MaskedReasoningProcessor(LogitsProcessor):
         vocab_size: Size of the model's vocabulary.
         start_ids: Token ID sequence for the opening tag (``<reasoning>``).
         end_ids: Token ID sequence for the closing tag (``</reasoning>``).
+        max_masked_tokens: Maximum number of masked tokens before forcing the
+            end sequence. After this many tokens are generated under masking,
+            the processor forces ``</reasoning>`` so the model can produce a
+            final answer. None disables the limit.
     """
+
+    # Tokens reserved for </reasoning><answer>...</answer> after masking ends.
+    ANSWER_TOKEN_RESERVE = 32
 
     def __init__(
         self,
@@ -78,11 +85,13 @@ class MaskedReasoningProcessor(LogitsProcessor):
         vocab_size: int,
         start_ids: list[int],
         end_ids: list[int],
+        max_masked_tokens: int | None = None,
     ):
         self.start_ids = start_ids
         self.end_ids = end_ids
         self.allowed_ids = set(allowed_ids)
         self.vocab_size = vocab_size
+        self.max_masked_tokens = max_masked_tokens
 
         # Pre-build masks to avoid per-step allocation.
         # Normal masking: allowed content tokens + first token of end sequence.
@@ -92,10 +101,12 @@ class MaskedReasoningProcessor(LogitsProcessor):
             self._build_mask({end_ids[i]}) for i in range(len(end_ids))
         ]
         self.mask_on = False
+        self._masked_count = 0
 
     def reset(self):
         """Reset state between generation calls."""
         self.mask_on = False
+        self._masked_count = 0
 
     def _build_mask(self, allowed_ids: set[int]) -> torch.Tensor:
         """Build an additive logit mask (0 for allowed, -inf for blocked)."""
@@ -130,6 +141,12 @@ class MaskedReasoningProcessor(LogitsProcessor):
         progress = self._end_seq_progress(input_ids)
         if progress > 0:
             return scores + self.force_masks[progress].to(scores.device)
+
+        self._masked_count += 1
+
+        # Hit max masked tokens → force start of end sequence
+        if self.max_masked_tokens is not None and self._masked_count >= self.max_masked_tokens:
+            return scores + self.force_masks[0].to(scores.device)
 
         # Normal masking: allowed tokens + first token of end sequence
         return scores + self.allowed_mask.to(scores.device)

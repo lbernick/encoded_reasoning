@@ -140,6 +140,8 @@ class MaskedHuggingFaceAPI(ModelAPI):
             ]
 
         self.processor.reset()
+        if config.max_tokens is not None:
+            self.processor.max_masked_tokens = config.max_tokens - MaskedReasoningProcessor.ANSWER_TOKEN_RESERVE
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
