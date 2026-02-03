@@ -109,11 +109,14 @@ class MaskedHuggingFaceAPI(ModelAPI):
 
         end_ids = self.tokenizer.encode("</reasoning>", add_special_tokens=False)
 
+        force_answer_prefix = model_args.get("force_answer_prefix")
+
         self.processor = MaskedReasoningProcessor(
             tokenizer=self.tokenizer,
             allowed_ids=allowed_ids,
             vocab_size=self.model.config.vocab_size,
             end_ids=end_ids,
+            force_answer_prefix=force_answer_prefix,
         )
 
     async def generate(

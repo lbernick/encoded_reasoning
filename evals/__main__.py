@@ -86,6 +86,12 @@ def main():
         default=0,
         help="Number of filler tokens (periods) to add to the prompt",
     )
+    parser.add_argument(
+        "--force-answer-prefix",
+        type=bool,
+        default=True,
+        help="Force '\\n<answer>' after end tag",
+    )
 
     args = parser.parse_args()
 
@@ -118,6 +124,7 @@ def main():
         filler_tokens=args.filler_tokens,
         name=eval_name,
         max_tokens=args.max_tokens,
+        force_answer_prefix="\n<answer>" if args.force_answer_prefix else None,
     )
 
     return results

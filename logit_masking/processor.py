@@ -70,6 +70,8 @@ class MaskedReasoningProcessor(LogitsProcessor):
             None disables the limit.
         start_tag: Opening tag string.
         end_tag: Closing tag string.
+        force_answer_prefix: If set, force these tokens after the end tag
+            (e.g. "\n<answer>" to prompt the model to answer). None disables.
     """
 
     ANSWER_TOKEN_RESERVE = 32
@@ -83,14 +85,21 @@ class MaskedReasoningProcessor(LogitsProcessor):
         max_masked_tokens: int | None = None,
         start_tag: str = "<reasoning>",
         end_tag: str = "</reasoning>",
+        force_answer_prefix: str | None = None,
     ):
         self.tokenizer = tokenizer
-        self.end_ids = end_ids
         self.allowed_ids = set(allowed_ids)
         self.vocab_size = vocab_size
         self.max_masked_tokens = max_masked_tokens
         self.start_tag = start_tag
         self.end_tag = end_tag
+
+        # Build the full force sequence: end tag + optional answer prefix
+        self.end_ids = end_ids
+        force_ids = list(end_ids)
+        if force_answer_prefix:
+            force_ids += tokenizer.encode(force_answer_prefix, add_special_tokens=False)
+        self.force_ids = force_ids
 
         # Allow any token that ends with a prefix of end_tag
         # (e.g. ',</' is allowed because it ends with '</' which starts '</reasoning>')
@@ -102,7 +111,7 @@ class MaskedReasoningProcessor(LogitsProcessor):
 
         self.allowed_mask = self._build_mask(self.allowed_ids | end_tag_token_ids)
         self.force_masks = [
-            self._build_mask({end_ids[i]}) for i in range(len(end_ids))
+            self._build_mask({tid}) for tid in self.force_ids
         ]
         self.mask_on = False
         self._masked_count = 0
@@ -147,7 +156,7 @@ class MaskedReasoningProcessor(LogitsProcessor):
         # Forcing end sequence token by token
         if self._forcing_end:
             step = self._force_step
-            if step < len(self.end_ids):
+            if step < len(self.force_ids):
                 self._force_step += 1
                 return scores + self.force_masks[step].to(scores.device)
             else:

@@ -155,7 +155,7 @@ def build_task(
     )
 
 
-def _resolve_model(model: str, constraint_name: str):
+def _resolve_model(model: str, constraint_name: str, force_answer_prefix: str | None = None):
     """Resolve model string to a Model instance when logit masking is needed.
 
     If the model uses the ``hf/`` prefix and the constraint defines an
@@ -170,6 +170,7 @@ def _resolve_model(model: str, constraint_name: str):
             return get_model(
                 f"hf-masked/{hf_model_name}",
                 allowed_token_filter=constraint.allowed_token_filter,
+                force_answer_prefix=force_answer_prefix,
             )
     return model
 
@@ -185,6 +186,7 @@ def run_eval(
     filler_tokens: int = 0,
     name: str | None = None,
     max_tokens: int | None = None,
+    force_answer_prefix: str | None = None,
 ):
     """Run an evaluation with a specified constraint.
 
@@ -215,7 +217,7 @@ def run_eval(
         name=name,
     )
 
-    resolved_model = _resolve_model(model, constraint_name)
+    resolved_model = _resolve_model(model, constraint_name, force_answer_prefix=force_answer_prefix)
 
     results = inspect_eval(
         task,
