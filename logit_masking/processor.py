@@ -161,9 +161,21 @@ class MaskedReasoningProcessor(LogitsProcessor):
 
         self._masked_count += 1
 
-        # Hit max masked tokens → force end sequence
+        # Log what the model wants to produce before masking
+        top_ids = scores[0].topk(5).indices.tolist()
+        top_tokens = [(tid, self.tokenizer.decode([tid])) for tid in top_ids]
+        print(f"[mask step {self._masked_count}] top unmasked: {top_tokens}")
+
+        # Force end sequence: max tokens hit or model started producing end tag
+        force = False
         if self.max_masked_tokens is not None and self._masked_count >= self.max_masked_tokens:
             logger.info(f"Forcing end tag: hit max masked tokens ({self.max_masked_tokens})")
+            force = True
+        elif any(tail.endswith(self.end_tag[:i]) for i in range(1, len(self.end_tag))):
+            logger.info(f"Forcing end tag: partial end tag detected in tail")
+            force = True
+
+        if force:
             self._forcing_end = True
             self._force_step = 1
             return scores + self.force_masks[0].to(scores.device)
