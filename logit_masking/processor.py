@@ -21,8 +21,12 @@ Typical usage:
     )
 """
 
+import logging
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, LogitsProcessor
+
+logger = logging.getLogger(__name__)
 
 
 def load_model(model_name: str) -> tuple[AutoTokenizer, AutoModelForCausalLM]:
@@ -42,9 +46,9 @@ def load_model(model_name: str) -> tuple[AutoTokenizer, AutoModelForCausalLM]:
         model = AutoModelForCausalLM.from_pretrained(
             model_name, device_map="auto", load_in_8bit=True
         )
-        print(f"Loaded {model_name} in 8-bit")
+        logger.info(f"Loaded {model_name} in 8-bit")
     except Exception as e:
-        print(f"8-bit failed ({e}), falling back to fp16")
+        logger.warning(f"8-bit loading failed ({e}), falling back to fp16")
         model = AutoModelForCausalLM.from_pretrained(
             model_name, device_map="auto", dtype=torch.float16
         )
@@ -143,13 +147,13 @@ class MaskedReasoningProcessor(LogitsProcessor):
 
         # End tag completed → stop masking
         if self.mask_on and self.end_tag in tail:
-            print("mask off!")
+            logger.info(f"Masking off: end tag detected after {self._masked_count} tokens")
             self.mask_on = False
             return scores
 
         # Start tag appeared → start masking
         if not self.mask_on and self.start_tag in tail:
-            print("mask on!")
+            logger.info("Masking on: start tag detected")
             self.mask_on = True
 
         if not self.mask_on:
@@ -159,9 +163,9 @@ class MaskedReasoningProcessor(LogitsProcessor):
 
         # Hit max masked tokens → force end sequence
         if self.max_masked_tokens is not None and self._masked_count >= self.max_masked_tokens:
+            logger.info(f"Forcing end tag: hit max masked tokens ({self.max_masked_tokens})")
             self._forcing_end = True
             self._force_step = 1
-            print("masking off because of max tokens")
             return scores + self.force_masks[0].to(scores.device)
 
         return scores + self.allowed_mask.to(scores.device)

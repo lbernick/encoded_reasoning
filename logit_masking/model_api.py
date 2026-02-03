@@ -20,7 +20,10 @@ Usage (from code):
 """
 
 import gc
+import logging
 from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
 
 import torch
 from transformers import LogitsProcessorList
@@ -149,6 +152,14 @@ class MaskedHuggingFaceAPI(ModelAPI):
             )
 
         new_tokens = outputs[0][input_len:]
+        last_token_id = new_tokens[-1].item()
+        logger.info(
+            f"Generation done: {len(new_tokens)} tokens, "
+            f"last_token={last_token_id} ({self.tokenizer.decode([last_token_id])!r}), "
+            f"is_eos={last_token_id == self.tokenizer.eos_token_id}, "
+            f"mask_on={self.processor.mask_on}, "
+            f"masked_count={self.processor._masked_count}"
+        )
         response_text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
 
         return ModelOutput(
