@@ -10,7 +10,7 @@ from inspect_ai import Task, eval as inspect_eval, Epochs
 
 from inspect_ai.solver import generate, system_message, chain, assistant_message, solver, TaskState
 
-from inspect_ai.model import get_model, GenerateConfig
+from inspect_ai.model import get_model
 
 from .datasets import load_dataset, get_scorer
 from .constraints import get_constraint
@@ -217,21 +217,17 @@ def run_eval(
 
     resolved_model = _resolve_model(model, constraint_name)
 
-    eval_kwargs = {}
-    if max_tokens is not None:
-        eval_kwargs["config"] = GenerateConfig(max_tokens=max_tokens)
-
     results = inspect_eval(
         task,
         model=resolved_model,
         limit=n_samples,
+        max_tokens=max_tokens,
         log_dir=str(LOG_DIR),
         metadata={
             "constraint": constraint_name,
             "dataset": dataset_name,
             "seed": seed,
         },
-        **eval_kwargs,
     )
 
     return results

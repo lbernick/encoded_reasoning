@@ -15,7 +15,7 @@ import regex
 import torch
 from transformers import LogitsProcessorList
 
-from .processor import MaskedReasoningProcessor, load_model
+from logit_masking.processor import MaskedReasoningProcessor, load_model
 
 
 def emoji_token_filter(tokenizer) -> set[int]:
