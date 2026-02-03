@@ -128,7 +128,7 @@ class MaskedHuggingFaceAPI(ModelAPI):
         input_len = inputs["input_ids"].shape[-1]
 
         kwargs = {k: v for k, v in {
-            "max_new_tokens": config.max_tokens,
+            "max_new_tokens": config.max_tokens or 512,
             "temperature": config.temperature,
             "do_sample": config.temperature is not None,
             "top_p": config.top_p,
