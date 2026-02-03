@@ -19,7 +19,7 @@ def whitespace_token_filter(tokenizer) -> set[int]:
 
 def punctuation_token_filter(tokenizer) -> set[int]:
     """Return token IDs that decode to only basic punctuation (no math symbols)."""
-    pattern = regex.compile(r'^[.,;:!?\'"()\[\]{}]+$')
+    pattern = regex.compile(r'^[\s.,;:!?\'"()\[\]{}]+$')
     return {
         tok_id for tok, tok_id in tokenizer.get_vocab().items()
         if pattern.match(tokenizer.decode([tok_id]))
