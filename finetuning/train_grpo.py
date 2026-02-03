@@ -1,5 +1,6 @@
-
-
+import os
+import subprocess
+import sys
 from collections import namedtuple
 from dataclasses import dataclass
 import random
@@ -297,10 +298,7 @@ class Trainer:
             print(f"\nSaving model to {self.args.output_dir}")
             trainer.save_model(self.args.output_dir)
             trainer.push_to_hub(
-                repo_id=f"lbernick/{self.args.wandb_project}",
                 commit_message=self.args.wandb_run_name,
-                private=True,
-                blocking=True  # Wait for upload to complete
             )
         finally:
             wandb.finish()
@@ -309,10 +307,28 @@ class Trainer:
         print("TRAINING COMPLETE")
         print("="*80)
 
+def check_git_clean():
+    """Check if the git repository has uncommitted changes."""
+    result = subprocess.run(
+        ['git', 'status', '--porcelain'],
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    
+    if result.stdout.strip():
+        print("Error: You have uncommitted changes in your repository:", file=sys.stderr)
+        print(result.stdout, file=sys.stderr)
+        print("\nPlease commit or stash your changes before training.", file=sys.stderr)
+        sys.exit(1)
+    
+    print("✓ Git repository is clean")
 
 if __name__ == "__main__":
+    check_git_clean()
     load_dotenv()
     login()
+    os.environ["WANDB_GIT_COMMIT"] = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
     args = FinetuningArgs()
     trainer = Trainer(args)
     trainer.train()
