@@ -10,8 +10,11 @@ from inspect_ai import Task, eval as inspect_eval, Epochs
 
 from inspect_ai.solver import generate, system_message, chain, assistant_message, solver, TaskState
 
+from inspect_ai.model import get_model
+
 from .datasets import load_dataset, get_scorer
 from .constraints import get_constraint
+import logit_masking.model_api  # noqa: F401 — registers hf-masked provider
 
 
 @solver
@@ -128,23 +131,16 @@ def build_task(
     base_prompt = BASE_SYSTEM_PROMPT_COT if constraint.expects_reasoning else BASE_SYSTEM_PROMPT_NO_COT
 
     full_prompt = base_prompt + "\n" + constraint.system_prompt
-    # Default name (CLI adds _repeatN suffix if needed)
     task_name = name or f"{constraint_name}_{dataset_name}"
 
-    # Build solver chain - add assistant prefill for no-COT to prevent reasoning
-
-    # Base solvers
     solvers = [system_message(full_prompt)]
 
-    # Optionally repeat the input n times
     if repeat_input > 1:
         solvers.append(repeat_input_solver(repeat_input))
 
-    # Optionally add filler tokens
     if filler_tokens > 0:
         solvers.append(filler_tokens_solver(filler_tokens))
 
-    # Add prefill for no-COT, then generate
     if not constraint.expects_reasoning:
         solvers.append(assistant_message("<answer>"))
 
@@ -157,6 +153,25 @@ def build_task(
         scorer=scorer_fn(),
         epochs=Epochs(epochs, "mode") if epochs > 1 else None,
     )
+
+
+def _resolve_model(model: str, constraint_name: str):
+    """Resolve model string to a Model instance when logit masking is needed.
+
+    If the model uses the ``hf/`` prefix and the constraint defines an
+    ``allowed_token_filter``, returns a ``Model`` instance backed by the
+    ``hf-masked`` provider. Otherwise returns the original string and lets
+    inspect resolve it normally.
+    """
+    if model.startswith("hf/"):
+        constraint = get_constraint(constraint_name)
+        if constraint.allowed_token_filter is not None:
+            hf_model_name = model.removeprefix("hf/")
+            return get_model(
+                f"hf-masked/{hf_model_name}",
+                allowed_token_filter=constraint.allowed_token_filter,
+            )
+    return model
 
 
 def run_eval(
@@ -173,7 +188,10 @@ def run_eval(
     """Run an evaluation with a specified constraint.
 
     Args:
-        model: Model to evaluate (OpenRouter format, e.g., "openrouter/openai/gpt-4o-mini")
+        model: Model identifier. Use "hf/model-name" for local HuggingFace models,
+            or an OpenRouter path (e.g., "openrouter/openai/gpt-4o-mini") for API models.
+            When a hf/ model is used and the constraint defines allowed_token_filter,
+            logit masking is applied automatically via the hf-masked provider.
         dataset_name: Dataset to use
         constraint_name: Reasoning constraint to apply (e.g., "baseline", "no_cot")
         n_samples: Number of samples to evaluate (None = full dataset)
@@ -196,9 +214,11 @@ def run_eval(
         name=name,
     )
 
+    resolved_model = _resolve_model(model, constraint_name)
+
     results = inspect_eval(
         task,
-        model=model,
+        model=resolved_model,
         limit=n_samples,
         log_dir=str(LOG_DIR),
         metadata={

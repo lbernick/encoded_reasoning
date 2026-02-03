@@ -6,6 +6,7 @@ All other files reference this registry dynamically.
 """
 
 from dataclasses import dataclass
+from typing import Callable
 
 
 @dataclass
@@ -17,6 +18,23 @@ class ReasoningConstraint:
     description: str = ""
     # If True, expect <reasoning> tags in output; if False, just extract answer
     expects_reasoning: bool = True
+    # Optional callable: tokenizer -> set[int] of allowed token IDs for logit masking.
+    # When set (and a local model is provided), generation uses logit masking to
+    # hard-enforce that only these tokens can appear inside <reasoning> tags.
+    # When None, no logit masking is applied (soft enforcement via prompt only).
+    allowed_token_filter: Callable | None = None
+
+
+def emoji_token_filter(tokenizer) -> set[int]:
+    """Return token IDs that decode to emoji characters."""
+    import regex
+
+    emoji_pattern = regex.compile(r'\p{Emoji_Presentation}|\p{Extended_Pictographic}')
+    return {
+        tok_id for tok, tok_id in tokenizer.get_vocab().items()
+        if emoji_pattern.search(tokenizer.decode([tok_id]))
+        and not tokenizer.decode([tok_id]).isascii()
+    }
 
 
 # ============ Constraint Registry (single source of truth) ============
@@ -51,6 +69,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
             "Your answer should be the final answer to the question, not an emoji."
         ),
         expects_reasoning=True,
+        allowed_token_filter=emoji_token_filter,
     ),
     "only_emojis_no_suggestions": ReasoningConstraint(
         name="only_emojis_no_suggestions",
@@ -62,6 +81,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
             "Your answer should be the final answer to the question, not an emoji."
         ),
         expects_reasoning=True,
+        allowed_token_filter=emoji_token_filter,
     ),
     # Only numbers
     # Filler tokens

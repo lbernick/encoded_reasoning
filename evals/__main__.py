@@ -29,7 +29,8 @@ def main():
     parser.add_argument(
         "-m", "--model",
         default="openrouter/openai/gpt-4o-mini",
-        help="Model to evaluate (OpenRouter format)",
+        help="Model to evaluate. Use 'hf/model-name' for local HuggingFace models "
+             "(enables logit masking when constraint supports it), or OpenRouter format for API models.",
     )
     parser.add_argument(
         "-d", "--dataset",
