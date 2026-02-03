@@ -21,7 +21,7 @@ from inspect_ai.solver import (
     Generate,
 )
 
-from .datasets import load_dataset, get_scorer
+from .datasets import load_dataset, get_scorer, get_dataset_system_prompt
 from .constraints import get_constraint
 
 
@@ -56,7 +56,7 @@ BASE_SYSTEM_PROMPT_NO_COT = """
 Solve the following problem. Give your final answer in <answer> tags.
 
 For multiple choice questions, answer with just the letter (A, B, C, or D).
-For math problems, answer with just the number.
+For free response problems, answer with just the final answer.
 
 Example:
 <answer>B</answer>
@@ -179,9 +179,14 @@ def build_task(
     dataset = load_dataset(dataset_name, shuffle=True, seed=seed)
     scorer_fn = get_scorer(dataset_name)
 
+    # Get dataset-specific system prompt if any
+    dataset_prompt = get_dataset_system_prompt(dataset_name)
+
     if two_stage: # Reason first, then answer
         constraint = get_constraint(constraint_name)
         reasoning_prompt = BASE_REASONING_PROMPT + constraint.system_prompt
+        if dataset_prompt:
+            reasoning_prompt += "\n" + dataset_prompt
 
         task_name = name or f"2stage_{constraint_name}_{dataset_name}"
 
@@ -200,6 +205,8 @@ def build_task(
         # Choose base prompt based on whether constraint expects reasoning
         base_prompt = BASE_SYSTEM_PROMPT_COT if constraint.expects_reasoning else BASE_SYSTEM_PROMPT_NO_COT
         full_prompt = base_prompt + "\n" + constraint.system_prompt
+        if dataset_prompt:
+            full_prompt += "\n" + dataset_prompt
 
         task_name = name or f"{constraint_name}_{dataset_name}"
         solvers = [system_message(full_prompt)]

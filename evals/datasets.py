@@ -20,7 +20,9 @@ import random
 import re
 from typing import Any, Callable
 
-from inspect_ai.dataset import Sample, hf_dataset, Dataset
+import pandas as pd
+
+from inspect_ai.dataset import Sample, hf_dataset, Dataset, MemoryDataset
 from inspect_ai.scorer import Scorer, Score, Target, accuracy, stderr, scorer
 from inspect_ai.solver import TaskState
 
@@ -161,6 +163,88 @@ def gpqa_scorer() -> Scorer:
     return score
 
 
+# ============ MoreHopQA ============
+
+# MoreHopQA parquet URLs (dataset uses deprecated loading script, so we load directly)
+MOREHOPQA_PARQUET_URLS = {
+    "verified": "https://huggingface.co/datasets/alabnii/morehopqa/resolve/main/verified/test-00000-of-00001.parquet",
+}
+
+
+def morehopqa_record_to_sample(row: dict) -> Sample:
+    """Convert MoreHopQA record to Sample.
+
+    MoreHopQA is a multi-hop QA dataset requiring generative answers.
+    Questions require multiple reasoning steps including factual, commonsense,
+    arithmetic, and symbolic reasoning.
+    """
+    return Sample(
+        input=row["question"],
+        target=str(row["answer"]),
+        metadata={
+            "reasoning_type": row.get("reasoning_type", ""),
+            "no_of_hops": row.get("no_of_hops", ""),
+            "answer_type": row.get("answer_type", ""),
+            "previous_question": row.get("previous_question", ""),
+            "previous_answer": row.get("previous_answer", ""),
+        },
+    )
+
+
+def extract_text_answer(text: str) -> str | None:
+    """Extract text answer from model output."""
+    # <answer>X</answer> pattern (full tags, COT case)
+    match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+
+    # X</answer> pattern (prefilled, no-COT case)
+    match = re.search(r"^(.*?)</answer>", text.strip(), re.DOTALL)
+    if match:
+        return match.group(1).strip()
+
+    return None
+
+
+def normalize_answer(answer: str) -> str:
+    """Normalize answer for comparison (lowercase, strip whitespace/punctuation)."""
+    answer = answer.lower().strip()
+    # Remove trailing punctuation
+    answer = re.sub(r"[.!?]+$", "", answer)
+    # Normalize whitespace
+    answer = re.sub(r"\s+", " ", answer)
+    return answer
+
+
+@scorer(metrics=[accuracy(), stderr()])
+def morehopqa_scorer() -> Scorer:
+    """Scorer for MoreHopQA - extracts text answer and does normalized comparison."""
+
+    async def score(state: TaskState, target: Target) -> Score:
+        predicted = extract_text_answer(state.output.completion)
+
+        if predicted is None:
+            return Score(
+                value=False,
+                answer=None,
+                explanation=f"Could not extract answer. Expected: {target.text}",
+            )
+
+        # Normalize both answers for comparison
+        pred_normalized = normalize_answer(predicted)
+        target_normalized = normalize_answer(target.text)
+
+        is_correct = pred_normalized == target_normalized
+
+        return Score(
+            value=is_correct,
+            answer=predicted,
+            explanation=f"Predicted: {predicted}, Expected: {target.text}",
+        )
+
+    return score
+
+
 # ============ Dataset Registry ============
 
 DatasetRecipe = dict[str, Any]
@@ -180,6 +264,14 @@ DATASETS: dict[str, DatasetRecipe] = {
         "record_to_sample": gpqa_record_to_sample,
         "scorer": gpqa_scorer,
     },
+    "morehopqa": {
+        # Uses custom loader (HF loading script is deprecated)
+        # Human-verified subset with 1118 samples
+        "parquet_url": MOREHOPQA_PARQUET_URLS["verified"],
+        "record_to_sample": morehopqa_record_to_sample,
+        "scorer": morehopqa_scorer,
+        "system_prompt": "If the answer is a date, format it as YYYY-MM-DD.",
+    },
 }
 
 
@@ -189,7 +281,7 @@ def load_dataset(
     shuffle: bool = True,
     seed: int = 42,
 ) -> Dataset:
-    """Load a dataset by name using Inspect's hf_dataset.
+    """Load a dataset by name using Inspect's hf_dataset or custom loader.
 
     Args:
         name: Dataset name (must be in DATASETS registry)
@@ -204,6 +296,20 @@ def load_dataset(
         raise ValueError(f"Unknown dataset: {name}. Available: {list(DATASETS.keys())}")
 
     recipe = DATASETS[name]
+
+    # Handle datasets that need custom loading (e.g., deprecated HF loading scripts)
+    if "parquet_url" in recipe:
+        df = pd.read_parquet(recipe["parquet_url"])
+        record_to_sample = recipe["record_to_sample"]
+        samples = [record_to_sample(df.iloc[i].to_dict()) for i in range(len(df))]
+
+        if shuffle:
+            random.seed(seed)
+            random.shuffle(samples)
+
+        return MemoryDataset(samples)
+
+    # Standard HuggingFace dataset loading
     return hf_dataset(
         recipe["hf_path"],
         name=recipe.get("hf_name"),
@@ -219,3 +325,10 @@ def get_scorer(name: str) -> Callable[[], Scorer]:
     if name not in DATASETS:
         raise ValueError(f"Unknown dataset: {name}. Available: {list(DATASETS.keys())}")
     return DATASETS[name]["scorer"]
+
+
+def get_dataset_system_prompt(name: str) -> str | None:
+    """Get the dataset-specific system prompt, if any."""
+    if name not in DATASETS:
+        raise ValueError(f"Unknown dataset: {name}. Available: {list(DATASETS.keys())}")
+    return DATASETS[name].get("system_prompt")
