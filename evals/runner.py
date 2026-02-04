@@ -63,15 +63,19 @@ Think about how you would solve the following problem. Reason step-by-step and o
 Do not output the answer.
 """
 
-BASE_ANSWER_WITH_REASONING_PROMPT = """
-Now, please answer the question immediately, without showing reasoning. Give your final answer in <answer> tags.
-
-For multiple choice questions, answer with just the letter (A, B, C, or D).
-For math problems, answer with just the number.
-
-Example:
-<answer>B</answer>
-"""
+def get_base_answer_with_reasoning_system_prompt(dataset_type: DatasetType) -> str:
+    prompt = "Now, please answer the question immediately, without showing reasoning. Give your final answer in <answer> tags. "
+    example = "\nExample:\n"
+    if dataset_type == DatasetType.MATHEMATICAL:
+        prompt += "Your answer should be a single number."
+        example = "<answer>42</answer>"
+    elif dataset_type == DatasetType.MCQ:
+        prompt += f"Your answer should be exactly one of the following letters: {ANSWER_LETTERS}"
+        example = "<answer>B</answer>"
+    elif dataset_type == DatasetType.FREE_RESPONSE:
+        example = "<answer>John</answer>"
+    
+    return prompt + example
 
 
 # ============ Solvers ============
@@ -276,7 +280,7 @@ def build_task(
         solvers.extend(
             [
                 insert_system_message(
-                    BASE_ANSWER_WITH_REASONING_PROMPT, insert_at_beginning=False
+                    get_base_answer_with_reasoning_system_prompt(dataset_type), insert_at_beginning=False
                 ),
                 generate(),
             ]
