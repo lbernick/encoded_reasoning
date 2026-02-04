@@ -20,6 +20,8 @@ class ReasoningConstraint:
     description: str = ""
     # If True, expect <reasoning> tags in output; if False, just extract answer
     expects_reasoning: bool = True
+    # An example of allowable reasoning under this constraint
+    reasoning_example: str = ""
     # Optional callable: tokenizer -> set[int] of allowed token IDs for logit masking.
     # When set (and a local model is provided), generation uses logit masking to
     # hard-enforce that only these tokens can appear inside <reasoning> tags.
@@ -35,6 +37,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         description="Standard chain-of-thought reasoning",
         system_prompt="Think through this step-by-step.",
         expects_reasoning=True,
+        reasoning_example="Step-by-step work here...",
     ),
     "no_cot": ReasoningConstraint(
         name="no_cot",
@@ -51,26 +54,11 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         system_prompt=(
             "CRITICAL CONSTRAINT: Your reasoning must contain ONLY emoji characters.\n"
             "FORBIDDEN in reasoning: letters (a-z, A-Z), digits (0-9), ASCII symbols (+, -, =, *, /)\n"
-            "REQUIRED: Use emoji equivalents:\n"
-            "  - Math: ➕ (not +), ➖ (not -), ✖️ (not *), ➗ (not /), ▶️ or ➡️ (not =)\n"
-            "  - Quantities: Repeat emojis (🍎🍎🍎 for 3 apples)\n"
-            "  - Result: Use ✅ or 🔜 to show final count\n"
             "Emojis are the only characters that can appear in your reasoning. All other characters will be penalized heavily."
             "Your answer should be the final answer to the question, not an emoji."
         ),
         expects_reasoning=True,
-        allowed_token_filter=emoji_token_filter,
-    ),
-    "only_emojis_no_suggestions": ReasoningConstraint(
-        name="only_emojis_no_suggestions",
-        description="Reasoning must use only emojis",
-        system_prompt=(
-            "CRITICAL CONSTRAINT: Your reasoning must contain ONLY emoji characters.\n"
-            "FORBIDDEN in reasoning: letters (a-z, A-Z), digits (0-9), ASCII symbols (+, -, =, *, /)\n"
-            "Emojis are the only characters that can appear in your reasoning. All other characters will be penalized heavily."
-            "Your answer should be the final answer to the question, not an emoji."
-        ),
-        expects_reasoning=True,
+        reasoning_example="🤔🔢🧑‍🤝‍🧑🧮⏳➕",
         allowed_token_filter=emoji_token_filter,
     ),
     # Only numbers

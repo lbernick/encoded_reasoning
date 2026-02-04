@@ -36,26 +36,33 @@ LOG_DIR = PROJECT_ROOT / "logs"
 # ============ System Prompts ============
 
 def get_base_system_prompt(reasoning: bool, dataset_type: DatasetType) -> str:
-    example = "\nExample:\n"
     if reasoning:
         prompt = "Solve the following problem. Show your reasoning in <reasoning> tags, then give your final answer in <answer> tags.\n"
-        example += """<reasoning>
-Step-by-step work here...
-</reasoning>
-"""
     else:
         prompt = "Solve the following problem. Give your final answer in <answer> tags.\n"
 
     if dataset_type == DatasetType.MATHEMATICAL:
         prompt += "Your answer should be a single number."
-        example += "<answer>42</answer>"
     elif dataset_type == DatasetType.MCQ:
         prompt += f"Your answer should be exactly one of the following letters: {ANSWER_LETTERS}"
+
+    return prompt
+
+def get_example(reasoning_example: str, dataset_type: DatasetType) -> str:
+    example = "\nExample:\n"
+    if reasoning_example != "":
+        example += f"""<reasoning>
+{reasoning_example}
+</reasoning>
+"""
+    if dataset_type == DatasetType.MATHEMATICAL:
+        example += "<answer>42</answer>"
+    elif dataset_type == DatasetType.MCQ:
         example += "<answer>B</answer>"
     elif dataset_type == DatasetType.FREE_RESPONSE:
         example += "<answer>John</answer>"
 
-    return prompt + example
+    return example
 
 # Two-stage prompts
 BASE_REASONING_PROMPT = """
@@ -293,9 +300,11 @@ def build_task(
 
         # Choose base prompt based on whether constraint expects reasoning
         base_prompt = get_base_system_prompt(constraint.expects_reasoning, dataset_type)
+        example = get_example(constraint.reasoning_example, dataset_type)
         full_prompt = base_prompt + "\n" + constraint.system_prompt
         if dataset_prompt:
             full_prompt += "\n" + dataset_prompt
+        full_prompt += example
 
         task_name = name or f"{constraint_name}_{dataset_name}"
         solvers = [system_message(full_prompt)]
