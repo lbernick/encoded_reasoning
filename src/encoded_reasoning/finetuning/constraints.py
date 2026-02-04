@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Callable
 
-from grader import grade_output_in_tags
+from .grader import grade_output_in_tags
 
 
 @dataclass

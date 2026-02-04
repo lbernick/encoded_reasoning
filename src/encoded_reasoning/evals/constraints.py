@@ -27,6 +27,7 @@ class ReasoningConstraint:
     # hard-enforce that only these tokens can appear inside <reasoning> tags.
     # When None, no logit masking is applied (soft enforcement via prompt only).
     allowed_token_filter: Callable | None = None
+    reward_function: Callable | None = None
 
 
 # ============ Constraint Registry (single source of truth) ============

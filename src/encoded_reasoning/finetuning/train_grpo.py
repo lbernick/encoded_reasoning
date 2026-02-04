@@ -11,7 +11,7 @@ from functools import partial
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Callable, Tuple
-from datasets import load_dataset
+from datasets import load_dataset as hf_load_dataset
 from dotenv import load_dotenv
 from transformers import (
     AutoConfig,
@@ -22,9 +22,9 @@ from transformers import (
 from trl import GRPOConfig, GRPOTrainer
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-from register_datasets import DATASETS, DatasetRecipe
-from constraints import RLObjective, OBJECTIVES
+from .constraints import RLObjective, OBJECTIVES
 from huggingface_hub import login
+from ..evals.datasets import DATASETS, DatasetRecipe
 
 
 @dataclass
@@ -160,15 +160,10 @@ class Trainer:
         self, custom_dataset: DatasetRecipe, system_prompt: str, n_samples: int = None
     ):
         """Load and format the dataset for training."""
-        print(f"Loading {custom_dataset.name} dataset...")
-        if custom_dataset.data_files:
-            dataset = load_dataset("json", data_files=custom_dataset.data_files)[
-                "train"
-            ]
-        else:
-            dataset = load_dataset(
-                custom_dataset.name, custom_dataset.config, split=custom_dataset.split
-            )
+        print(f"Loading {self.args.dataset_name} dataset...")
+        dataset = hf_load_dataset(
+            custom_dataset["hf_path"], custom_dataset["config"], split=custom_dataset["train_split"]
+        )
 
         if n_samples is not None:
             indices = random.sample(range(len(dataset)), min(n_samples, len(dataset)))
@@ -178,7 +173,7 @@ class Trainer:
 
         def format_example(example):
             """Format a single example."""
-            question, answer = custom_dataset.format_func(example)
+            question, answer = custom_dataset["format_func"](example)
             conversation = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": question},

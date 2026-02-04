@@ -42,6 +42,24 @@ def gsm8k_record_to_sample(record: dict) -> Sample:
     target = match.group(1).replace(",", "") if match else record["answer"]
     return Sample(input=record["question"], target=target)
 
+def gsm8k_format_func(example):
+    question = example["question"]
+    answer = extract_answer_from_gsm8k(example["answer"])
+    return question, answer
+
+def extract_answer_from_gsm8k(answer_text: str) -> str:
+    """
+    Extract the final numerical answer from GSM8K format.
+    GSM8K answers are in the format: "Step by step explanation\n#### 42"
+    """
+    # GSM8K format: answer is after ####
+    if "####" in answer_text:
+        answer = answer_text.split("####")[-1].strip()
+        # Remove commas from numbers (e.g., "1,000" -> "1000")
+        answer = answer.replace(",", "")
+        return answer
+    return answer_text.strip()
+
 
 def extract_number_answer(text: str) -> str | None:
     """Extract numeric answer from model output."""
@@ -195,6 +213,8 @@ def mawps_record_to_sample(record: dict) -> Sample:
         },
     )
 
+def mawps_format_func(example):
+    return example["question"], example["answer"][0]
 
 @scorer(metrics=[accuracy(), stderr()])
 def mawps_scorer() -> Scorer:
@@ -331,15 +351,19 @@ DATASETS: dict[str, DatasetRecipe] = {
     "gsm8k": {
         "hf_path": "openai/gsm8k",
         "hf_name": "main",
-        "split": "test",
+        "train_split": "train",
+        "test_split": "test",
+        "config": "main",
         "record_to_sample": gsm8k_record_to_sample,
+        "format_func": gsm8k_format_func,
         "scorer": gsm8k_scorer,
         "type": DatasetType.MATHEMATICAL,
     },
     "gpqa": {
         "hf_path": "Idavidrein/gpqa",
         "hf_name": "gpqa_diamond",  # Hardest subset, 198 questions
-        "split": "train",  # GPQA only has train split
+        "train_split": "train",
+        "test_split": "train",  # GPQA only has train split
         "record_to_sample": gpqa_record_to_sample,
         "scorer": gpqa_scorer,
         "type": DatasetType.MCQ,
@@ -367,8 +391,11 @@ DATASETS: dict[str, DatasetRecipe] = {
         # MAWPS: elementary math word problems (1921 samples)
         # Uses nguyen-brat/mawps which has actual numbers in questions
         "hf_path": "nguyen-brat/mawps",
-        "split": "train",  # Only has train split
+        "train_split": "train",  # Only has train split
+        "test_split": "train",  # Only has train split
+        "config": "default",
         "record_to_sample": mawps_record_to_sample,
+        "format_func": mawps_format_func,
         "scorer": mawps_scorer,
         "type": DatasetType.MATHEMATICAL,
     },
@@ -435,7 +462,7 @@ def load_dataset(
     return hf_dataset(
         recipe["hf_path"],
         name=recipe.get("hf_name"),
-        split=split or recipe["split"],
+        split=split or recipe["test_split"],
         sample_fields=recipe["record_to_sample"],
         shuffle=shuffle,
         seed=seed,
