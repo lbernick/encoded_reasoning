@@ -66,7 +66,9 @@ def extract_results(log_path: str) -> dict:
     }
 
 
-def plot_results(results: list[dict], output_path: str | None = None, title: str | None = None):
+def plot_results(
+    results: list[dict], output_path: str | None = None, title: str | None = None
+):
     """Create bar chart with error bars."""
     # Sort by repeat value
     results = sorted(results, key=lambda x: x["repeat"])
@@ -83,7 +85,9 @@ def plot_results(results: list[dict], output_path: str | None = None, title: str
     x = range(len(results))
 
     # Create bars with error bars
-    bars = ax.bar(x, accuracies, yerr=stderrs, capsize=5, color="steelblue", edgecolor="black")
+    bars = ax.bar(
+        x, accuracies, yerr=stderrs, capsize=5, color="steelblue", edgecolor="black"
+    )
 
     # Add value labels on bars
     for i, (bar, acc, err) in enumerate(zip(bars, accuracies, stderrs)):
@@ -110,7 +114,9 @@ def plot_results(results: list[dict], output_path: str | None = None, title: str
         # Auto-generate title from first result
         r = results[0]
         model_short = r["model"].split("/")[-1]
-        ax.set_title(f"{model_short} on {r['dataset']} (n={r['n_samples']})", fontsize=14)
+        ax.set_title(
+            f"{model_short} on {r['dataset']} (n={r['n_samples']})", fontsize=14
+        )
 
     # Add grid
     ax.yaxis.grid(True, linestyle="--", alpha=0.7)
@@ -138,9 +144,13 @@ def plot_results(results: list[dict], output_path: str | None = None, title: str
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Plot evaluation results with error bars")
+    parser = argparse.ArgumentParser(
+        description="Plot evaluation results with error bars"
+    )
     parser.add_argument("logs", nargs="*", help="Log files to plot")
-    parser.add_argument("--pattern", "-p", help="Glob pattern to find logs (e.g., '*haiku*gsm8k*')")
+    parser.add_argument(
+        "--pattern", "-p", help="Glob pattern to find logs (e.g., '*haiku*gsm8k*')"
+    )
     parser.add_argument("--output", "-o", help="Output file path (e.g., results.png)")
     parser.add_argument("--title", "-t", help="Plot title")
 
@@ -153,7 +163,11 @@ def main():
         log_files.extend(args.logs)
 
     if args.pattern:
-        pattern = f"logs/{args.pattern}.eval" if not args.pattern.endswith(".eval") else f"logs/{args.pattern}"
+        pattern = (
+            f"logs/{args.pattern}.eval"
+            if not args.pattern.endswith(".eval")
+            else f"logs/{args.pattern}"
+        )
         log_files.extend(glob.glob(pattern))
 
     if not log_files:
@@ -174,7 +188,9 @@ def main():
         try:
             result = extract_results(log_file)
             results.append(result)
-            print(f"{result['name']}: {result['accuracy']:.1%} ± {result['stderr']:.1%} (n={result['n_samples']})")
+            print(
+                f"{result['name']}: {result['accuracy']:.1%} ± {result['stderr']:.1%} (n={result['n_samples']})"
+            )
         except Exception as e:
             print(f"Error reading {log_file}: {e}")
 

@@ -36,7 +36,9 @@ def categorize_experiment(filename: str) -> tuple[str, int]:
         return ("Unknown", 99)
 
 
-def plot_all_experiments(model: str, dataset: str = "gsm8k", output_path: str | None = None):
+def plot_all_experiments(
+    model: str, dataset: str = "gsm8k", output_path: str | None = None
+):
     """
     Create a comprehensive comparison chart for all experiments.
 
@@ -67,6 +69,7 @@ def plot_all_experiments(model: str, dataset: str = "gsm8k", output_path: str | 
 
     # Group log files by experiment type and keep only the most recent
     from collections import defaultdict
+
     log_groups = defaultdict(list)
     for log_file in log_files:
         label, sort_order = categorize_experiment(log_file)
@@ -75,7 +78,9 @@ def plot_all_experiments(model: str, dataset: str = "gsm8k", output_path: str | 
     # Keep only the most recent log for each experiment type (sorted by filename timestamp)
     unique_logs = []
     for label, logs in log_groups.items():
-        most_recent = sorted(logs)[-1]  # Filenames have timestamps, so last is most recent
+        most_recent = sorted(logs)[
+            -1
+        ]  # Filenames have timestamps, so last is most recent
         unique_logs.append(most_recent)
 
     results = []
@@ -111,16 +116,20 @@ def plot_all_experiments(model: str, dataset: str = "gsm8k", output_path: str | 
 
         label, sort_order = categorize_experiment(log_file)
 
-        results.append({
-            "label": label,
-            "sort_order": sort_order,
-            "accuracy": accuracy,
-            "stderr": stderr,
-            "n_samples": n_scored or len(log.samples),
-            "path": log_file,
-        })
+        results.append(
+            {
+                "label": label,
+                "sort_order": sort_order,
+                "accuracy": accuracy,
+                "stderr": stderr,
+                "n_samples": n_scored or len(log.samples),
+                "path": log_file,
+            }
+        )
 
-        print(f"{label:20s}: {accuracy:.1%} ± {stderr:.1%} (n={results[-1]['n_samples']})")
+        print(
+            f"{label:20s}: {accuracy:.1%} ± {stderr:.1%} (n={results[-1]['n_samples']})"
+        )
 
     if not results:
         print("No completed experiments found")
@@ -147,7 +156,15 @@ def plot_all_experiments(model: str, dataset: str = "gsm8k", output_path: str | 
         else:  # Fillers
             colors.append("lightseagreen")
 
-    bars = ax.bar(x, accuracies, yerr=stderrs, capsize=5, color=colors, edgecolor="black", alpha=0.8)
+    bars = ax.bar(
+        x,
+        accuracies,
+        yerr=stderrs,
+        capsize=5,
+        color=colors,
+        edgecolor="black",
+        alpha=0.8,
+    )
 
     # Add value labels on bars
     for i, (bar, acc, err) in enumerate(zip(bars, accuracies, stderrs)):
@@ -165,7 +182,10 @@ def plot_all_experiments(model: str, dataset: str = "gsm8k", output_path: str | 
     ax.set_xticklabels(labels, fontsize=11, rotation=45, ha="right")
     ax.set_ylabel("Accuracy", fontsize=12)
     ax.set_ylim(0, 1.0)
-    ax.set_title(f"{model.capitalize()} 4.5 on {dataset.upper()}: All Experiments Comparison", fontsize=14)
+    ax.set_title(
+        f"{model.capitalize()} 4.5 on {dataset.upper()}: All Experiments Comparison",
+        fontsize=14,
+    )
 
     ax.yaxis.grid(True, linestyle="--", alpha=0.7)
     ax.set_axisbelow(True)
