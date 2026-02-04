@@ -9,7 +9,12 @@ from dataclasses import dataclass
 import regex
 from typing import Callable
 
-from .token_filters import emoji_token_filter, numerical_token_filter
+from .token_filters import (
+    emoji_token_filter,
+    numerical_token_filter,
+    length_3_word_token_filter,
+    length_4_word_token_filter,
+)
 
 # Match full emoji sequences including:
 # - Emoji with variation selectors (e.g., ❤️)
@@ -43,6 +48,28 @@ def percentage_numerical(reasoning: str) -> float:
         return 0.0
     numerical_chars = sum(1 for c in reasoning if c.isdigit() or c.isspace())
     return numerical_chars / len(reasoning)
+
+
+def percentage_length_n_words(reasoning: str, length: int) -> float:
+    """Return the fraction of alphabetic words that are exactly `length` characters."""
+    if not reasoning:
+        return 0.0
+    # Extract only alphabetic sequences as "words"
+    words = regex.findall(r'[a-zA-Z]+', reasoning)
+    if not words:
+        return 0.0
+    correct_words = sum(1 for w in words if len(w) == length)
+    return correct_words / len(words)
+
+
+def percentage_length_3_words(reasoning: str) -> float:
+    """Return the fraction of words that are exactly 3 characters."""
+    return percentage_length_n_words(reasoning, 3)
+
+
+def percentage_length_4_words(reasoning: str) -> float:
+    """Return the fraction of words that are exactly 4 characters."""
+    return percentage_length_n_words(reasoning, 4)
 
 
 
@@ -113,7 +140,36 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         allowed_token_filter=numerical_token_filter,
         reward_function=percentage_numerical,
     ),
-    # Only n-netter words
+    # Only 3-letter words
+    "only_length_3": ReasoningConstraint(
+        name="only_length_3",
+        description="Reasoning must only use exactly 3-letter words",
+        system_prompt=(
+            "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words that are exactly 3 letters long.\n"
+            "FORBIDDEN in reasoning: any word that is not exactly 3 letters (e.g., 'the', 'cat', 'and' are OK, but 'a', 'to', 'I', 'this', 'that' are NOT)\n"
+            "Every word must be exactly 3 letters. Whitespace is allowed. All other words will be penalized heavily.\n"
+            "Your answer should be the final answer to the question, not constrained to 3-letter words."
+        ),
+        expects_reasoning=True,
+        reasoning_example="the cat sat and ate one big fat ham",
+        allowed_token_filter=length_3_word_token_filter,
+        reward_function=percentage_length_3_words,
+    ),
+    # Only 4-letter words
+    "only_length_4": ReasoningConstraint(
+        name="only_length_4",
+        description="Reasoning must only use exactly 4-letter words",
+        system_prompt=(
+            "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words that are exactly 4 letters long.\n"
+            "FORBIDDEN in reasoning: any word that is not exactly 4 letters (e.g., 'this', 'that', 'from' are OK, but 'the', 'a', 'hello' are NOT)\n"
+            "Every word must be exactly 4 letters. Whitespace is allowed. All other words will be penalized heavily.\n"
+            "Your answer should be the final answer to the question, not constrained to 4-letter words."
+        ),
+        expects_reasoning=True,
+        reasoning_example="this does work well with four each time",
+        allowed_token_filter=length_4_word_token_filter,
+        reward_function=percentage_length_4_words,
+    ),
     # Filler tokens
 }
 

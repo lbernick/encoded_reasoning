@@ -80,3 +80,23 @@ def numerical_token_filter(tokenizer) -> set[int]:
         tok_id for tok, tok_id in tokenizer.get_vocab().items()
         if pattern.match(tokenizer.decode([tok_id]))
     }
+
+
+def exact_length_word_token_filter(tokenizer, length: int) -> set[int]:
+    """Return token IDs that decode to words of exactly `length` characters."""
+    return {
+        tok_id for tok, tok_id in tokenizer.get_vocab().items()
+        if (decoded := tokenizer.decode([tok_id]).strip())
+        and len(decoded) == length
+        and decoded.isalpha()
+    } | whitespace_token_filter(tokenizer)
+
+
+def length_3_word_token_filter(tokenizer) -> set[int]:
+    """Return token IDs that decode to exactly 3-letter words or whitespace."""
+    return exact_length_word_token_filter(tokenizer, 3)
+
+
+def length_4_word_token_filter(tokenizer) -> set[int]:
+    """Return token IDs that decode to exactly 4-letter words or whitespace."""
+    return exact_length_word_token_filter(tokenizer, 4)
