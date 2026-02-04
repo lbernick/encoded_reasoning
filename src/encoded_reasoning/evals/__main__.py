@@ -109,7 +109,7 @@ def main():
     parser.add_argument(
         "--use-logit-mask",
         type=bool,
-        default=False,
+        default=os.environ.get("USE_LOGIT_MASK", "").lower() in ("true", "1"),
         help="Use logit masking",
     )
     parser.add_argument(
