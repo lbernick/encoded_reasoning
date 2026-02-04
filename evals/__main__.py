@@ -39,9 +39,6 @@ def main():
              "(enables logit masking when constraint supports it), or OpenRouter format for API models.",
     )
     parser.add_argument(
-        "-d", "--dataset",
-        default=os.environ.get("DATASET", "gsm8k"),
-    parser.add_argument(
         "-d",
         "--dataset",
         default="gsm8k",
