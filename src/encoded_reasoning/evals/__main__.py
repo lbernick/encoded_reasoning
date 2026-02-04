@@ -113,6 +113,12 @@ def main():
         help="Use logit masking",
     )
     parser.add_argument(
+        "--force-on-degenerate",
+        type=bool,
+        default=os.environ.get("FORCE_ON_DEGENERATE", "").lower() in ("true", "1"),
+        help="Force end tag when the model's top token is a degenerate character (U+FFFD)",
+    )
+    parser.add_argument(
         "--strip-reasoning",
         action="store_true",
         help="Strip non-emoji characters from reasoning before final answer (requires --two-stage)",
@@ -184,6 +190,7 @@ def main():
         max_tokens=args.max_tokens,
         force_answer_prefix="\n<answer>" if args.force_answer_prefix else None,
         use_logit_mask=args.use_logit_mask,
+        force_on_degenerate=args.force_on_degenerate,
     )
 
     return results

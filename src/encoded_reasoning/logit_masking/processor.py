@@ -84,6 +84,9 @@ class MaskedReasoningProcessor(LogitsProcessor):
         end_tag: Closing tag string.
         force_answer_prefix: If set, force these tokens after the end tag
             (e.g. "\n<answer>" to prompt the model to answer). None disables.
+        force_on_degenerate: If True, force end tag when the model's top
+            unmasked token is a degenerate token (e.g. replacement character),
+            indicating the model has exhausted useful reasoning.
     """
 
     ANSWER_TOKEN_RESERVE = 32
@@ -98,6 +101,7 @@ class MaskedReasoningProcessor(LogitsProcessor):
         start_tag: str = "<reasoning>",
         end_tag: str = "</reasoning>",
         force_answer_prefix: str | None = None,
+        force_on_degenerate: bool = False,
     ):
         self.tokenizer = tokenizer
         self.allowed_ids = set(allowed_ids)
@@ -105,6 +109,13 @@ class MaskedReasoningProcessor(LogitsProcessor):
         self.max_masked_tokens = max_masked_tokens
         self.start_tag = start_tag
         self.end_tag = end_tag
+        self.force_on_degenerate = force_on_degenerate
+
+        # Token IDs that signal the model has exhausted useful reasoning
+        self._degenerate_ids = {
+            tok_id for tok_id in range(vocab_size)
+            if tokenizer.decode([tok_id]) in ('\ufffd',)
+        }
 
         # Build the full force sequence: end tag + optional answer prefix
         self.end_ids = end_ids
@@ -207,12 +218,15 @@ class MaskedReasoningProcessor(LogitsProcessor):
                 f"[mask step {self._masked_count}] top unmasked is forbidden: {top_tokens}"
             )
 
-        # Force end sequence: max tokens hit or model started producing end tag
+        # Force end sequence: max tokens hit, partial end tag, or degenerate top token
         # skip = number of end_ids tokens already produced by the model
         skip = self._end_tag_progress(tail)
+        top_id = scores[0].argmax().item()
         force = skip > 0 or (
             self.max_masked_tokens is not None
             and self._masked_count >= self.max_masked_tokens
+        ) or (
+            self.force_on_degenerate and top_id in self._degenerate_ids
         )
 
         if force:

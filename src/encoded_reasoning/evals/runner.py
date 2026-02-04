@@ -263,6 +263,7 @@ def _resolve_model(
     constraint_name: str,
     use_logit_mask: bool,
     force_answer_prefix: str | None = None,
+    force_on_degenerate: bool = False,
 ):
     """Resolve model string to a Model instance when logit masking is needed.
 
@@ -279,6 +280,7 @@ def _resolve_model(
                 f"hf-masked/{hf_model_name}",
                 allowed_token_filter=constraint.allowed_token_filter,
                 force_answer_prefix=force_answer_prefix,
+                force_on_degenerate=force_on_degenerate,
             )
     return model
 
@@ -298,6 +300,7 @@ def run_eval(
     max_tokens: int | None = None,
     force_answer_prefix: str | None = None,
     use_logit_mask: bool = False,
+    force_on_degenerate: bool = False,
 ):
     """Run an evaluation with a specified constraint.
 
@@ -316,6 +319,8 @@ def run_eval(
         strip_reasoning: If True (requires two_stage), strip non-emoji characters from
                          reasoning before generating the final answer
         name: Name for eval run. Defaults to '{constraint}_{dataset}'
+        force_on_degenerate: If True, force end tag when the model's top token is
+            a degenerate character (U+FFFD), indicating exhausted reasoning.
 
     Returns:
         Inspect eval results
@@ -333,7 +338,9 @@ def run_eval(
     )
 
     resolved_model = _resolve_model(
-        model, constraint_name, use_logit_mask, force_answer_prefix=force_answer_prefix
+        model, constraint_name, use_logit_mask,
+        force_answer_prefix=force_answer_prefix,
+        force_on_degenerate=force_on_degenerate,
     )
 
     results = inspect_eval(
