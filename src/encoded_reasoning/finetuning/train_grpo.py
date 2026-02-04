@@ -39,8 +39,8 @@ class FinetuningArgs:
 
     learning_rate: float = 5e-6
     batch_size: int = 4
-    num_train_epochs: int = 3
-    max_steps: int = 100  # -1 for unlimited
+    num_train_epochs: int = 1
+    max_steps: int = -1  # -1 for unlimited
     gradient_accumulation_steps: int = 4
 
     # LoRA config
