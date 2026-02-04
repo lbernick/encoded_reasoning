@@ -10,3 +10,7 @@
 
 Experiments:
 - Trained Qwen2.5-3B-Instruct on GSM8K with curriculum learning and emoji-only prompt: lbernick-personal-use/Qwen2.5-3B-Instruct-gsm8k-grpo/6lblap6a
+  - Model seemed to be OK at outputting the desired format, but not great at answering the question
+- Tweaked prompt and reward function: No curriculum learning, but just encouraged it to use as many emojis as possible and rewarded that. https://wandb.ai/lbernick-personal-use/Qwen2.5-3B-Instruct-gsm8k-grpo/runs/qgch3txr?nw=nwuserlbernick
+  - Model reasoned better, but never outputted many emojis. Average reward shows it was still getting stuck on getting the problem right.
+- Try a better model and easier dataset.

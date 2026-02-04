@@ -23,8 +23,8 @@ from huggingface_hub import login
 
 @dataclass
 class FinetuningArgs:
-    model_name: str = "Qwen/Qwen2.5-3B-Instruct"
-    dataset_name: str = "gsm8k"
+    model_name: str = "Qwen/Qwen2.5-7B-Instruct"
+    dataset_name: str = "addsub"
     objective: str = "emojis"
     use_curriculum_learning: bool = False
 

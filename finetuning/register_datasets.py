@@ -41,6 +41,20 @@ GSM8K = DatasetRecipe(
 )
 
 # ============================================================================
+# AddSub
+# ============================================================================
+
+def format_addsub(example):
+    return example["input"], example["output_answer"]
+
+ADDSUB = DatasetRecipe(
+    name="allenai/lila",
+    config="addsub",
+    split="train",
+    format_func=format_addsub,
+)
+
+# ============================================================================
 # Simple Math
 # ============================================================================
 
@@ -60,4 +74,5 @@ SIMPLE_MATH = DatasetRecipe(
 DATASETS = {
     "gsm8k": GSM8K,
     "simple_math": SIMPLE_MATH,
+    "addsub": ADDSUB
 }
