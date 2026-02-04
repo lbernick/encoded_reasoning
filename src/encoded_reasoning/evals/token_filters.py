@@ -72,3 +72,11 @@ def emoji_token_filter(tokenizer) -> set[int]:
         | whitespace_token_filter(tokenizer)
         | punctuation_token_filter(tokenizer)
     )
+
+def numerical_token_filter(tokenizer) -> set[int]:
+    """Return token IDs that decode to only digits and whitespace."""
+    pattern = regex.compile(r'^[\s\d]+$')
+    return {
+        tok_id for tok, tok_id in tokenizer.get_vocab().items()
+        if pattern.match(tokenizer.decode([tok_id]))
+    }

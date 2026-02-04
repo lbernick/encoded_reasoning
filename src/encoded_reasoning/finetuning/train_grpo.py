@@ -18,10 +18,13 @@ from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     BitsAndBytesConfig,
+    GenerationConfig,
 )
 from trl import GRPOConfig, GRPOTrainer
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
+from .register_datasets import DATASETS, DatasetRecipe
+from .constraints import RLObjective, OBJECTIVES
 from huggingface_hub import login
 from .grader import constrained_reasoning_substring, parse_reasoning_and_answer
 from ..evals.constraints import CONSTRAINTS, ReasoningConstraint
@@ -31,9 +34,9 @@ from ..evals.prompts import get_base_system_prompt, get_example
 
 @dataclass
 class FinetuningArgs:
-    model_name: str = "Qwen/Qwen2.5-7B-Instruct"
-    dataset_name: str = "mawps"
-    constraint: str = "only_emojis"
+    model_name: str = "Qwen/Qwen3-14B"
+    dataset_name: str = "gsm8k"
+    objective: str = "emojis"
     use_curriculum_learning: bool = False
 
     learning_rate: float = 5e-6
@@ -344,6 +347,10 @@ class Trainer:
             temperature=self.args.temperature,
         )
 
+        # Disable Qwen3's built-in thinking mode so model follows our system prompt
+        # (otherwise it outputs <think> tags instead of <reasoning> tags)
+        model.generation_config.enable_thinking = False
+
         # https://huggingface.co/docs/trl/main/en/grpo_trainer#trl.GRPOTrainer
         trainer = GRPOTrainer(
             model=model,
@@ -388,7 +395,7 @@ def check_git_clean():
 
 
 if __name__ == "__main__":
-    check_git_clean()
+    # check_git_clean()
     load_dotenv()
     login()
     os.environ["WANDB_GIT_COMMIT"] = (

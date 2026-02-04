@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import regex
 from typing import Callable
 
-from .token_filters import emoji_token_filter
+from .token_filters import emoji_token_filter, numerical_token_filter
 
 # Match full emoji sequences including:
 # - Emoji with variation selectors (e.g., ❤️)
@@ -36,6 +36,13 @@ EMOJI_PATTERN = regex.compile(
 def percentage_emojis(reasoning: str) -> float:
     emojis = EMOJI_PATTERN.findall(reasoning)
     return len(emojis) / len(reasoning)
+
+def percentage_numerical(reasoning: str) -> float:
+    """Return the fraction of characters that are digits or whitespace."""
+    if not reasoning:
+        return 0.0
+    numerical_chars = sum(1 for c in reasoning if c.isdigit() or c.isspace())
+    return numerical_chars / len(reasoning)
 
 
 
@@ -93,8 +100,21 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         reward_function=percentage_emojis,
     ),
     # Only numbers
-    # Filler tokens
+    "only_numbers": ReasoningConstraint(
+        name="only_numbers",
+        description="Reasoning must only use numbers",
+        system_prompt=(
+            "CRITICAL CONSTRAINT: Your reasoning must contain ONLY numbers and whitespaces.\n"
+            "FORBIDDEN in reasoning: letters (a-z, A-Z), and any ascii or utf-8 symbols besides (0-9)\n"
+            "Numbers and whitespace are the only characters that can appear in your reasoning. All other characters will be penalized heavily."
+            "Your answer should be the final answer to the question, not constrained to being numbers only. You can output in the appropriate format."
+        ),
+        expects_reasoning=True,
+        allowed_token_filter=numerical_token_filter,
+        reward_function=percentage_numerical,
+    ),
     # Only n-netter words
+    # Filler tokens
 }
 
 
