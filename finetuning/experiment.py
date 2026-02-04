@@ -1,6 +1,7 @@
-#%%
+# %%
 from grader import *
-#%%
+
+# %%
 text = """🎉 ($)79 - 🎬9 = 🏁$70 (money left after birthday) 🏁$70 - 🏁$32 = 🛒$38 (cost of baseball gear) So, Benny spent 🛒
 $38 on baseball gear. 🛒✨ 38"""
 

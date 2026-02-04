@@ -33,19 +33,22 @@ def main():
     )
 
     parser.add_argument(
-        "-m", "--model",
+        "-m",
+        "--model",
         default=os.environ.get("MODEL", "openrouter/openai/gpt-4o-mini"),
         help="Model to evaluate. Use 'hf/model-name' for local HuggingFace models "
-             "(enables logit masking when constraint supports it), or OpenRouter format for API models.",
+        "(enables logit masking when constraint supports it), or OpenRouter format for API models.",
     )
     parser.add_argument(
-        "-d", "--dataset",
+        "-d",
+        "--dataset",
         default=os.environ.get("DATASET", "gsm8k"),
         choices=list(DATASETS.keys()),
         help="Dataset to use",
     )
     parser.add_argument(
-        "-c", "--constraint",
+        "-c",
+        "--constraint",
         default=os.environ.get("CONSTRAINT"),
         choices=list(CONSTRAINTS.keys()),
         help="Reasoning constraint to apply",
@@ -112,14 +115,16 @@ def main():
     parser.add_argument(
         "--strip-reasoning",
         action="store_true",
-        help="Strip non-emoji characters from reasoning before final answer (requires --two-stage)"
+        help="Strip non-emoji characters from reasoning before final answer (requires --two-stage)",
     )
 
     args = parser.parse_args()
 
     # Validate: single-stage requires constraint
     if not args.two_stage and not args.constraint:
-        parser.error("--constraint is required for single-stage mode (or use --two-stage)")
+        parser.error(
+            "--constraint is required for single-stage mode (or use --two-stage)"
+        )
 
     # Validate: strip-reasoning requires two-stage
     if args.strip_reasoning and not args.two_stage:
@@ -129,12 +134,19 @@ def main():
     if args.two_stage:
         constraint_part = args.constraint or "unconstrained"
         if args.strip_reasoning:
-            eval_name = args.name or f"2stage_stripped_{constraint_part}_{args.dataset}_{short_model_name(args.model)}"
+            eval_name = (
+                args.name
+                or f"2stage_stripped_{constraint_part}_{args.dataset}_{short_model_name(args.model)}"
+            )
         else:
-            eval_name = args.name or f"2stage_{constraint_part}_{args.dataset}_{short_model_name(args.model)}"
+            eval_name = (
+                args.name
+                or f"2stage_{constraint_part}_{args.dataset}_{short_model_name(args.model)}"
+            )
     else:
         eval_name = (
-            args.name or f"{args.constraint}_{args.dataset}_{short_model_name(args.model)}"
+            args.name
+            or f"{args.constraint}_{args.dataset}_{short_model_name(args.model)}"
         )
         if args.repeat_input > 1:
             eval_name = f"{eval_name}_repeat{args.repeat_input}"

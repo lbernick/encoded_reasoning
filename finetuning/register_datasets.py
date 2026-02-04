@@ -1,7 +1,6 @@
-
-
 from dataclasses import dataclass
 from typing import Callable
+
 
 @dataclass
 class DatasetRecipe:
@@ -11,14 +10,17 @@ class DatasetRecipe:
     split: str = None
     data_files: str = None
 
+
 # ============================================================================
 # GSM8K
 # ============================================================================
+
 
 def format_gsm8k(example):
     question = example["question"]
     answer = extract_answer_from_gsm8k(example["answer"])
     return question, answer
+
 
 def extract_answer_from_gsm8k(answer_text: str) -> str:
     """
@@ -33,6 +35,7 @@ def extract_answer_from_gsm8k(answer_text: str) -> str:
         return answer
     return answer_text.strip()
 
+
 GSM8K = DatasetRecipe(
     name="gsm8k",
     config="main",
@@ -44,8 +47,10 @@ GSM8K = DatasetRecipe(
 # AddSub
 # ============================================================================
 
+
 def format_addsub(example):
     return example["input"], example["output_answer"]
+
 
 ADDSUB = DatasetRecipe(
     name="allenai/lila",
@@ -58,6 +63,7 @@ ADDSUB = DatasetRecipe(
 def format_mawps(example):
     return example["question"], extract_answer_from_gsm8k(example["answer"])
 
+
 MAWPS = DatasetRecipe(
     name="garrethlee/MAWPS",
     config="default",
@@ -68,8 +74,10 @@ MAWPS = DatasetRecipe(
 # Simple Math
 # ============================================================================
 
+
 def format_simple(example):
     return example["question"], example["answer"]
+
 
 SIMPLE_MATH = DatasetRecipe(
     name="simple_math",
@@ -85,5 +93,5 @@ DATASETS = {
     "gsm8k": GSM8K,
     "simple_math": SIMPLE_MATH,
     "mawps": MAWPS,
-    #"addsub": ADDSUB
+    # "addsub": ADDSUB
 }

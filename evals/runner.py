@@ -27,6 +27,7 @@ from .constraints import get_constraint
 
 from inspect_ai.model import get_model
 import logit_masking.model_api  # noqa: F401 — registers hf-masked provider
+
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent
 LOG_DIR = PROJECT_ROOT / "logs"
@@ -83,14 +84,17 @@ Example:
 
 # ============ Solvers ============
 
+
 @solver
 def repeat_input_solver(n: int):
     """Solver that repeats the user input n times."""
+
     async def solve(state: TaskState, generate):
         if n > 1 and state.messages:
             # Create new message list to avoid mutating shared message objects
             # (which can cause all samples to have the same question)
             from copy import copy
+
             new_messages = []
             for msg in state.messages:
                 if msg.role == "user" and isinstance(msg.content, str):
@@ -102,12 +106,14 @@ def repeat_input_solver(n: int):
                     new_messages.append(msg)
             state.messages = new_messages
         return state
+
     return solve
 
 
 @solver
 def filler_tokens_solver(n: int):
     """Solver that adds n filler tokens (periods) to the assistant message."""
+
     async def solve(state: TaskState, generate):
         if n > 0:
             # Generate the response first
@@ -116,26 +122,31 @@ def filler_tokens_solver(n: int):
             # Add filler tokens to the assistant's response
             if result.choices and result.choices[0].message.content:
                 filler = "." * n
-                result.choices[0].message.content = filler + "\n" + result.choices[0].message.content
+                result.choices[0].message.content = (
+                    filler + "\n" + result.choices[0].message.content
+                )
 
             return result
         return await generate(state)
+
     return solve
 
 
 @solver
-def insert_system_message(content: str, insert_at_beginning: bool = True, **params: Any) -> Solver:
+def insert_system_message(
+    content: str, insert_at_beginning: bool = True, **params: Any
+) -> Solver:
     """Solver which inserts a system message into the conversation.
 
     Args:
         content: The message content to insert
         insert_at_beginning: If True, insert at start of messages; if False, append to end
     """
+
     async def solve(state: TaskState, generate: Generate) -> TaskState:
         if insert_at_beginning:
             state.messages.insert(
-                0,
-                ChatMessageSystem(content=content, model=state.model.name)
+                0, ChatMessageSystem(content=content, model=state.model.name)
             )
         else:
             state.messages.append(
@@ -169,32 +180,37 @@ def strip_non_emoji_from_reasoning() -> Solver:
                 # - Flag sequences
                 # Excludes bare ASCII digits/symbols that are technically emoji-capable
                 emoji_pattern = regex.compile(
-                    r'(?:'
+                    r"(?:"
                     # Keycap sequences: digit/symbol + VS16 + combining enclosing keycap
-                    r'[0-9#*]\ufe0f?\u20e3|'
+                    r"[0-9#*]\ufe0f?\u20e3|"
                     # Flag sequences (regional indicators)
-                    r'[\U0001F1E0-\U0001F1FF]{2}|'
+                    r"[\U0001F1E0-\U0001F1FF]{2}|"
                     # Emoji ZWJ sequences and modified emoji
-                    r'(?:[\U0001F300-\U0001F9FF\U0001FA00-\U0001FAFF\u2600-\u27BF\u2300-\u23FF\u2B50\u2B55\u203C\u2049\u2934\u2935\u25AA\u25AB\u25B6\u25C0\u25FB-\u25FE\u2614\u2615\u2648-\u2653\u267F\u2693\u26A1\u26AA\u26AB\u26BD\u26BE\u26C4\u26C5\u26CE\u26D4\u26EA\u26F2\u26F3\u26F5\u26FA\u26FD\u2702\u2705\u2708-\u270D\u270F\u2712\u2714\u2716\u271D\u2721\u2728\u2733\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763\u2764\u2795-\u2797\u27A1\u27B0\u27BF\u2934\u2935\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55\u3030\u303D\u3297\u3299]|\U0001F000-\U0001F0FF)'
-                    r'(?:\ufe0f)?'  # Optional variation selector
-                    r'(?:\U0001F3FB-\U0001F3FF)?'  # Optional skin tone
-                    r'(?:\u200d(?:[\U0001F300-\U0001F9FF\U0001F3FB-\U0001F3FF\u2640\u2642\u2695\u2696\u2708\u2764\U0001F466-\U0001F469\U0001F48B])\ufe0f?)*'  # ZWJ sequences
-                    r')',
-                    regex.UNICODE
+                    r"(?:[\U0001F300-\U0001F9FF\U0001FA00-\U0001FAFF\u2600-\u27BF\u2300-\u23FF\u2B50\u2B55\u203C\u2049\u2934\u2935\u25AA\u25AB\u25B6\u25C0\u25FB-\u25FE\u2614\u2615\u2648-\u2653\u267F\u2693\u26A1\u26AA\u26AB\u26BD\u26BE\u26C4\u26C5\u26CE\u26D4\u26EA\u26F2\u26F3\u26F5\u26FA\u26FD\u2702\u2705\u2708-\u270D\u270F\u2712\u2714\u2716\u271D\u2721\u2728\u2733\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763\u2764\u2795-\u2797\u27A1\u27B0\u27BF\u2934\u2935\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55\u3030\u303D\u3297\u3299]|\U0001F000-\U0001F0FF)"
+                    r"(?:\ufe0f)?"  # Optional variation selector
+                    r"(?:\U0001F3FB-\U0001F3FF)?"  # Optional skin tone
+                    r"(?:\u200d(?:[\U0001F300-\U0001F9FF\U0001F3FB-\U0001F3FF\u2640\u2642\u2695\u2696\u2708\u2764\U0001F466-\U0001F469\U0001F48B])\ufe0f?)*"  # ZWJ sequences
+                    r")",
+                    regex.UNICODE,
                 )
 
                 # Process line by line to preserve newlines
-                lines = msg.content.split('\n')
+                lines = msg.content.split("\n")
                 stripped_lines = []
                 for line in lines:
                     emojis = emoji_pattern.findall(line)
-                    stripped_lines.append(''.join(emojis))
-                stripped_content = '\n'.join(stripped_lines)
+                    stripped_lines.append("".join(emojis))
+                stripped_content = "\n".join(stripped_lines)
 
                 # Update the message content
                 from copy import copy
+
                 new_msg = copy(msg)
-                new_msg.content = stripped_content if stripped_content.strip() else "(no emojis found)"
+                new_msg.content = (
+                    stripped_content
+                    if stripped_content.strip()
+                    else "(no emojis found)"
+                )
                 state.messages[i] = new_msg
                 break
 
@@ -204,6 +220,7 @@ def strip_non_emoji_from_reasoning() -> Solver:
 
 
 # ============ Evaluation Runner ============
+
 
 def build_task(
     constraint_name: str = "unconstrained",
@@ -243,7 +260,7 @@ def build_task(
     # Get dataset-specific system prompt if any
     dataset_prompt = get_dataset_system_prompt(dataset_name)
 
-    if two_stage: # Reason first, then answer
+    if two_stage:  # Reason first, then answer
         constraint = get_constraint(constraint_name)
         reasoning_prompt = BASE_REASONING_PROMPT + constraint.system_prompt
         if dataset_prompt:
@@ -263,18 +280,26 @@ def build_task(
         if strip_reasoning:
             solvers.append(strip_non_emoji_from_reasoning())
 
-        solvers.extend([
-            insert_system_message(BASE_ANSWER_WITH_REASONING_PROMPT, insert_at_beginning=False),
-            generate(),
-        ])
-    else: # reason and answer in same generation
+        solvers.extend(
+            [
+                insert_system_message(
+                    BASE_ANSWER_WITH_REASONING_PROMPT, insert_at_beginning=False
+                ),
+                generate(),
+            ]
+        )
+    else:  # reason and answer in same generation
         if not constraint_name:
             raise ValueError("constraint_name is required for single-stage mode")
 
         constraint = get_constraint(constraint_name)
 
         # Choose base prompt based on whether constraint expects reasoning
-        base_prompt = BASE_SYSTEM_PROMPT_COT if constraint.expects_reasoning else BASE_SYSTEM_PROMPT_NO_COT
+        base_prompt = (
+            BASE_SYSTEM_PROMPT_COT
+            if constraint.expects_reasoning
+            else BASE_SYSTEM_PROMPT_NO_COT
+        )
         full_prompt = base_prompt + "\n" + constraint.system_prompt
         if dataset_prompt:
             full_prompt += "\n" + dataset_prompt
@@ -303,7 +328,12 @@ def build_task(
     )
 
 
-def _resolve_model(model: str, constraint_name: str, use_logit_mask: bool, force_answer_prefix: str | None = None):
+def _resolve_model(
+    model: str,
+    constraint_name: str,
+    use_logit_mask: bool,
+    force_answer_prefix: str | None = None,
+):
     """Resolve model string to a Model instance when logit masking is needed.
 
     If the model uses the ``hf/`` prefix and the constraint defines an
@@ -372,7 +402,9 @@ def run_eval(
         name=name,
     )
 
-    resolved_model = _resolve_model(model, constraint_name, use_logit_mask, force_answer_prefix=force_answer_prefix)
+    resolved_model = _resolve_model(
+        model, constraint_name, use_logit_mask, force_answer_prefix=force_answer_prefix
+    )
 
     results = inspect_eval(
         task,

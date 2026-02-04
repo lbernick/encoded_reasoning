@@ -50,9 +50,7 @@ def load_model(model_name: str) -> tuple[AutoTokenizer, AutoModelForCausalLM]:
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     if _is_prequantized(model_name):
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name, device_map="auto"
-        )
+        model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto")
         print(f"Loaded {model_name} (pre-quantized)")
         return tokenizer, model
 
@@ -119,15 +117,17 @@ class MaskedReasoningProcessor(LogitsProcessor):
         # Allow any token that ends with a prefix of end_tag
         # (e.g. ',</' is allowed because it ends with '</' which starts '</reasoning>')
         end_tag_token_ids = {
-            tok_id for tok_id in range(vocab_size)
+            tok_id
+            for tok_id in range(vocab_size)
             if (decoded := tokenizer.decode([tok_id]))
-            and any(self.end_tag.startswith(decoded[-j:]) for j in range(1, len(decoded) + 1))
+            and any(
+                self.end_tag.startswith(decoded[-j:])
+                for j in range(1, len(decoded) + 1)
+            )
         }
 
         self.allowed_mask = self._build_mask(self.allowed_ids | end_tag_token_ids)
-        self.force_masks = [
-            self._build_mask({tid}) for tid in self.force_ids
-        ]
+        self.force_masks = [self._build_mask({tid}) for tid in self.force_ids]
         self.mask_on = False
         self._masked_count = 0
         self._forcing_end = False
@@ -142,7 +142,7 @@ class MaskedReasoningProcessor(LogitsProcessor):
 
     def _build_mask(self, allowed_ids: set[int]) -> torch.Tensor:
         """Build a logit mask that zeroes allowed IDs and -infs everything else."""
-        mask = torch.full((self.vocab_size,), float('-inf'))
+        mask = torch.full((self.vocab_size,), float("-inf"))
         mask[list(allowed_ids)] = 0
         return mask
 
@@ -159,7 +159,9 @@ class MaskedReasoningProcessor(LogitsProcessor):
         """
         for i in range(len(self.end_tag) - 1, 0, -1):
             if tail.endswith(self.end_tag[:i]):
-                return len(self.tokenizer.encode(self.end_tag[:i], add_special_tokens=False))
+                return len(
+                    self.tokenizer.encode(self.end_tag[:i], add_special_tokens=False)
+                )
         return 0
 
     def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
@@ -200,19 +202,28 @@ class MaskedReasoningProcessor(LogitsProcessor):
         # Log what the model wants to produce before masking
         top_ids = scores[0].topk(1).indices.tolist()
         top_tokens = [(tid, self.tokenizer.decode([tid])) for tid in top_ids]
-        if self.allowed_mask[top_ids[0]] == float('-inf'):
-            print(f"[mask step {self._masked_count}] top unmasked is forbidden: {top_tokens}")
+        if self.allowed_mask[top_ids[0]] == float("-inf"):
+            print(
+                f"[mask step {self._masked_count}] top unmasked is forbidden: {top_tokens}"
+            )
 
         # Force end sequence: max tokens hit or model started producing end tag
         # skip = number of end_ids tokens already produced by the model
         skip = self._end_tag_progress(tail)
-        force = skip > 0 or (self.max_masked_tokens is not None and self._masked_count >= self.max_masked_tokens)
+        force = skip > 0 or (
+            self.max_masked_tokens is not None
+            and self._masked_count >= self.max_masked_tokens
+        )
 
         if force:
             if skip:
-                print(f"Forcing end tag: partial end tag detected, skipping {skip} tokens")
+                print(
+                    f"Forcing end tag: partial end tag detected, skipping {skip} tokens"
+                )
             else:
-                print(f"Forcing end tag: hit max masked tokens ({self.max_masked_tokens})")
+                print(
+                    f"Forcing end tag: hit max masked tokens ({self.max_masked_tokens})"
+                )
             self._forcing_end = True
             self._force_step = skip + 1
             return scores + self.force_masks[skip].to(scores.device)

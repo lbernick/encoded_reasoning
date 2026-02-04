@@ -29,12 +29,14 @@ def main():
         help="HuggingFace model name (without hf/ prefix — added automatically)",
     )
     parser.add_argument(
-        "-d", "--dataset",
+        "-d",
+        "--dataset",
         default="gsm8k",
-        choices=list(DATASETS.keys()), 
+        choices=list(DATASETS.keys()),
     )
     parser.add_argument(
-        "-c", "--constraint",
+        "-c",
+        "--constraint",
         default="only_emojis_no_suggestions",
         choices=list(CONSTRAINTS.keys()),
     )
@@ -46,7 +48,8 @@ def main():
     )
 
     parser.add_argument(
-        "-n", "--n-samples",
+        "-n",
+        "--n-samples",
         type=int,
         default=2,
     )
@@ -60,7 +63,11 @@ def main():
 
     model = f"hf/{args.model}"
     constraint = get_constraint(args.constraint)
-    base_prompt = BASE_SYSTEM_PROMPT_COT if constraint.expects_reasoning else BASE_SYSTEM_PROMPT_NO_COT
+    base_prompt = (
+        BASE_SYSTEM_PROMPT_COT
+        if constraint.expects_reasoning
+        else BASE_SYSTEM_PROMPT_NO_COT
+    )
     full_prompt = base_prompt + "\n" + constraint.system_prompt
     name = f"test_integration_{args.constraint}_{args.dataset}"
 

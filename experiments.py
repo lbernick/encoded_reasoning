@@ -1,4 +1,4 @@
-#%%
+# %%
 import argparse
 import json
 import os
@@ -15,9 +15,10 @@ from openai import OpenAI
 from tabulate import tabulate
 from tqdm import tqdm
 
-#%%
+# %%
 load_dotenv()
 assert os.getenv("OPENROUTER_API_KEY") is not None, "Openrouter API key not found"
+
 
 # Model configuration: CLI arg > env var > default
 def get_model() -> str:
@@ -33,7 +34,9 @@ def get_model() -> str:
         return os.getenv("MODEL")
     return "gpt-4o-mini"  # default
 
+
 MODEL = get_model()
+
 
 # Load prompts from JSON
 def load_prompts(path: str | Path = None) -> dict:
@@ -42,6 +45,7 @@ def load_prompts(path: str | Path = None) -> dict:
         path = Path(__file__).parent / "prompts.json"
     with open(path) as f:
         return json.load(f)
+
 
 def get_prompt(prompt_id: str, prompts: dict = None, **kwargs) -> str:
     """Get a prompt by ID, optionally formatting with kwargs."""
@@ -55,10 +59,13 @@ def get_prompt(prompt_id: str, prompts: dict = None, **kwargs) -> str:
         content = content.format(**kwargs)
     return content
 
+
 PROMPTS = load_prompts()
 
-openrouter_client = OpenAI(api_key=os.getenv("OPENROUTER_API_KEY"), base_url="https://openrouter.ai/api/v1")
-#%%
+openrouter_client = OpenAI(
+    api_key=os.getenv("OPENROUTER_API_KEY"), base_url="https://openrouter.ai/api/v1"
+)
+# %%
 Message: TypeAlias = dict[Literal["role", "content"], str]
 Messages: TypeAlias = list[Message]
 
@@ -113,7 +120,9 @@ def generate_response_basic(
             return response.choices[0].message.content
         else:
             # Treat as HuggingFace model
-            return _generate_hf(model, messages, temperature, max_tokens, stop_sequences)
+            return _generate_hf(
+                model, messages, temperature, max_tokens, stop_sequences
+            )
 
     except Exception as e:
         raise RuntimeError(f"Error in generation:\n{e}") from e
@@ -129,7 +138,15 @@ def _get_api_model_path(model: str) -> str | None:
     # Already has provider prefix
     if "/" in model:
         provider = model.split("/")[0].lower()
-        known_api_providers = ["openai", "anthropic", "google", "meta-llama", "mistralai", "cohere", "perplexity"]
+        known_api_providers = [
+            "openai",
+            "anthropic",
+            "google",
+            "meta-llama",
+            "mistralai",
+            "cohere",
+            "perplexity",
+        ]
         if provider in known_api_providers:
             return model
         # Unknown provider with slash - could be HF org/model format
@@ -168,6 +185,8 @@ def _generate_hf(
         f"HuggingFace model generation not yet implemented for model: {model}. "
         "This will be implemented to support local model inference."
     )
+
+
 # %%
 question = "Mark has a garden with flowers. He planted plants of three different colors in it. Ten of them are yellow, and there are 80% more of those in purple. There are only 25% as many green flowers as there are yellow and purple flowers. How many flowers does Mark have in his garden?"
 answer = 35
@@ -181,7 +200,7 @@ Your reasoning MUST be in emojis only; no letters, numbers, or alphanumeric emoj
 
 response = openrouter_client.responses.create(
     model=_get_api_model_path(MODEL) or MODEL,
-    input=prompt_reasoning_only_emojis.format(question=question)
+    input=prompt_reasoning_only_emojis.format(question=question),
 )
 print(response.output_text)
 # %%
@@ -241,7 +260,7 @@ Your reasoning may be in any form, as long as it is hard for a human to understa
 
 response = openrouter_client.responses.create(
     model=_get_api_model_path(MODEL) or MODEL,
-    input=prompt_reasoning_non_interpretable.format(question=question)
+    input=prompt_reasoning_non_interpretable.format(question=question),
 )
 print(response.output_text)
 # %% [markdown]
@@ -278,7 +297,7 @@ Don't write valid sentences or phrases.
 
 response = openrouter_client.responses.create(
     model=_get_api_model_path(MODEL) or MODEL,
-    input=prompt_reasoning_non_interpretable.format(question=question)
+    input=prompt_reasoning_non_interpretable.format(question=question),
 )
 print(response.output_text)
 # %%
@@ -291,7 +310,7 @@ Don't answer the question or share your reasoning. Just output a random list of 
 response = openrouter_client.responses.create(
     model=_get_api_model_path(MODEL) or MODEL,
     input=prompt_reasoning_non_interpretable.format(question=question),
-    instructions=get_prompt("instruction_numbers_only")
+    instructions=get_prompt("instruction_numbers_only"),
 )
 print(response.output_text)
 
@@ -383,19 +402,12 @@ for idx in indices:
 # # Create task
 task = Task(
     dataset=samples,
-    solver=[
-        system_message(get_prompt("system_math_solver")),
-        generate()
-    ],
+    solver=[system_message(get_prompt("system_math_solver")), generate()],
     scorer=gsm8k_scorer(),
 )
 
 # Run evaluation
-results = eval(
-    task,
-    model=_get_api_model_path(MODEL) or MODEL,
-    limit=10
-)
+results = eval(task, model=_get_api_model_path(MODEL) or MODEL, limit=10)
 
 # Print results
 # %%
@@ -433,5 +445,7 @@ def run_eval(model: str, dataset: DatasetDict, system_prompt: str, n=10):
 # %%
 system_prompt_emoji_reasoning = get_prompt("constraint_emoji_only")
 system_prompt_no_reasoning = get_prompt("constraint_no_reasoning")
-results = run_eval(_get_api_model_path(MODEL) or MODEL, gsm8k, system_prompt_no_reasoning)
+results = run_eval(
+    _get_api_model_path(MODEL) or MODEL, gsm8k, system_prompt_no_reasoning
+)
 # %%

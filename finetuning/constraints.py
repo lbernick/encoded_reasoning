@@ -10,6 +10,7 @@ class RLObjective:
     system_prompt: str
     reward_function: Callable
 
+
 # ============================================================================
 # EMOJIS
 # ============================================================================
@@ -36,13 +37,12 @@ EMOJIS_OBJECTIVE = RLObjective(
     reward_function=grade_output_in_tags,
 )
 
-EMOJIS_THEN_ANSWER = "Output a sequence of emojis and then answer the question in one number."
+EMOJIS_THEN_ANSWER = (
+    "Output a sequence of emojis and then answer the question in one number."
+)
 
 # ============================================================================
 # RL Objectives
 # ============================================================================
 
-OBJECTIVES = {
-    "emojis_only": EMOJIS_ONLY_OBJECTIVE,
-    "emojis": EMOJIS_OBJECTIVE
-}
+OBJECTIVES = {"emojis_only": EMOJIS_ONLY_OBJECTIVE, "emojis": EMOJIS_OBJECTIVE}

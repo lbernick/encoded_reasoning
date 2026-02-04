@@ -130,23 +130,30 @@ class MaskedHuggingFaceAPI(ModelAPI):
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
         input_len = inputs["input_ids"].shape[-1]
 
-        kwargs = {k: v for k, v in {
-            "max_new_tokens": config.max_tokens or 512,
-            "temperature": config.temperature,
-            "do_sample": config.temperature is not None,
-            "top_p": config.top_p,
-            "top_k": config.top_k,
-        }.items() if v is not None and v is not False}
+        kwargs = {
+            k: v
+            for k, v in {
+                "max_new_tokens": config.max_tokens or 512,
+                "temperature": config.temperature,
+                "do_sample": config.temperature is not None,
+                "top_p": config.top_p,
+                "top_k": config.top_k,
+            }.items()
+            if v is not None and v is not False
+        }
 
         if config.stop_seqs:
             from transformers.generation import StopStringCriteria
+
             kwargs["stopping_criteria"] = [
                 StopStringCriteria(self.tokenizer, config.stop_seqs)
             ]
 
         self.processor.reset()
         if config.max_tokens is not None:
-            self.processor.max_masked_tokens = config.max_tokens - MaskedReasoningProcessor.ANSWER_TOKEN_RESERVE
+            self.processor.max_masked_tokens = (
+                config.max_tokens - MaskedReasoningProcessor.ANSWER_TOKEN_RESERVE
+            )
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
