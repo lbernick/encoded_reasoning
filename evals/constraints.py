@@ -79,6 +79,11 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
 }
 
 
+def register_constraint(constraint: ReasoningConstraint) -> None:
+    """Register a constraint dynamically (e.g. for testing)."""
+    CONSTRAINTS[constraint.name] = constraint
+
+
 def get_constraint(name: str) -> ReasoningConstraint:
     """Get a constraint by name."""
     if name not in CONSTRAINTS:

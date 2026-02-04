@@ -14,8 +14,47 @@ Usage:
 import argparse
 
 from evals.runner import run_eval, BASE_SYSTEM_PROMPT_COT, BASE_SYSTEM_PROMPT_NO_COT
-from evals.constraints import CONSTRAINTS, get_constraint
+from evals.constraints import CONSTRAINTS, get_constraint, register_constraint, ReasoningConstraint
 from evals.datasets import DATASETS
+from evals.token_filters import (
+    logic_symbol_token_filter,
+    number_token_filter,
+    punctuation_token_filter,
+    short_word_token_filter,
+)
+
+# Test-only constraints for exercising individual token filters
+TEST_CONSTRAINTS = {
+    "test_logic": ReasoningConstraint(
+        name="test_logic",
+        description="Reasoning with formal logic symbols only",
+        system_prompt="Reason using only formal logic symbols.",
+        allowed_token_filter=logic_symbol_token_filter,
+    ),
+    "test_numbers": ReasoningConstraint(
+        name="test_numbers",
+        description="Reasoning with numbers only",
+        system_prompt="Reason using only numbers.",
+        allowed_token_filter=number_token_filter,
+    ),
+    "test_punctuation": ReasoningConstraint(
+        name="test_punctuation",
+        description="Reasoning with punctuation only",
+        system_prompt="Reason using only punctuation.",
+        allowed_token_filter=punctuation_token_filter,
+    ),
+    "test_short_words": ReasoningConstraint(
+        name="test_short_words",
+        description="Reasoning with short words only (max 3 chars)",
+        system_prompt="Reason using only very short words (3 characters or fewer).",
+        allowed_token_filter=short_word_token_filter,
+    ),
+}
+
+for constraint in TEST_CONSTRAINTS.values():
+    register_constraint(constraint)
+
+ALL_CONSTRAINTS = CONSTRAINTS
 
 
 def main():
@@ -38,7 +77,7 @@ def main():
         "-c",
         "--constraint",
         default="only_emojis_no_suggestions",
-        choices=list(CONSTRAINTS.keys()),
+        choices=list(ALL_CONSTRAINTS.keys()),
     )
 
     parser.add_argument(
@@ -62,7 +101,7 @@ def main():
     args = parser.parse_args()
 
     model = f"hf/{args.model}"
-    constraint = get_constraint(args.constraint)
+    constraint = ALL_CONSTRAINTS[args.constraint]
     base_prompt = (
         BASE_SYSTEM_PROMPT_COT
         if constraint.expects_reasoning

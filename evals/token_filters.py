@@ -28,6 +28,34 @@ def punctuation_token_filter(tokenizer) -> set[int]:
     }
 
 
+def number_token_filter(tokenizer) -> set[int]:
+    """Return token IDs that decode to only digits and numeric punctuation (., -, /)."""
+    pattern = regex.compile(r'^[\s\d.,/\-]+$')
+    return {
+        tok_id for tok, tok_id in tokenizer.get_vocab().items()
+        if pattern.match(tokenizer.decode([tok_id]))
+    }
+
+
+def logic_symbol_token_filter(tokenizer) -> set[int]:
+    """Return token IDs that decode to only formal logic symbols."""
+    pattern = regex.compile(r'^[\s∧∨¬→↔⊕∀∃⊤⊥⊢⊨∈∉⊂⊃⊆⊇∪∩∅≡≠≤≥<>(){}∴∵\[\]]+$')
+    return {
+        tok_id for tok, tok_id in tokenizer.get_vocab().items()
+        if pattern.match(tokenizer.decode([tok_id]))
+    }
+
+
+def short_word_token_filter(tokenizer, max_chars: int = 3) -> set[int]:
+    """Return token IDs that decode to words of at most max_chars characters."""
+    return {
+        tok_id for tok, tok_id in tokenizer.get_vocab().items()
+        if (decoded := tokenizer.decode([tok_id]).strip())
+        and len(decoded) <= max_chars
+        and decoded.isalpha()
+    } | whitespace_token_filter(tokenizer)
+
+
 def emoji_token_filter(tokenizer) -> set[int]:
     """Return token IDs that decode to emoji, whitespace, or punctuation."""
     emoji_pattern = regex.compile(
