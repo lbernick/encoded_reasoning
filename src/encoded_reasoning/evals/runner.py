@@ -298,6 +298,7 @@ def run_eval(
     max_tokens: int | None = None,
     force_answer_prefix: str | None = None,
     use_logit_mask: bool = False,
+    log_dir: str | None = None,
 ):
     """Run an evaluation with a specified constraint.
 
@@ -341,7 +342,7 @@ def run_eval(
         model=resolved_model,
         limit=n_samples,
         max_tokens=max_tokens,
-        log_dir=str(LOG_DIR),
+        log_dir=str(log_dir) if log_dir is not None else str(LOG_DIR),
         metadata={
             "constraint": constraint_name,
             "dataset": dataset_name,

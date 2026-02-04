@@ -117,6 +117,12 @@ def main():
         action="store_true",
         help="Strip non-emoji characters from reasoning before final answer (requires --two-stage)",
     )
+    parser.add_argument(
+        "--log-dir",
+        type=str,
+        default=None,
+        help="Directory for eval logs. Defaults to project 'logs/'.",
+    )
 
     args = parser.parse_args()
 
@@ -184,6 +190,7 @@ def main():
         max_tokens=args.max_tokens,
         force_answer_prefix="\n<answer>" if args.force_answer_prefix else None,
         use_logit_mask=args.use_logit_mask,
+        log_dir=args.log_dir,
     )
 
     return results
