@@ -12,6 +12,7 @@ Each dataset defines:
 # Load environment variables BEFORE any other imports
 # (Inspect reads OPENROUTER_API_KEY at import time)
 from dotenv import load_dotenv
+from enum import Enum
 
 import random
 import re
@@ -258,6 +259,11 @@ def morehopqa_scorer() -> Scorer:
 
 DatasetRecipe = dict[str, Any]
 
+class DatasetType(Enum):
+    MATHEMATICAL = 1
+    MCQ = 2
+    FREE_RESPONSE = 3
+
 DATASETS: dict[str, DatasetRecipe] = {
     "gsm8k": {
         "hf_path": "openai/gsm8k",
@@ -265,6 +271,7 @@ DATASETS: dict[str, DatasetRecipe] = {
         "split": "test",
         "record_to_sample": gsm8k_record_to_sample,
         "scorer": gsm8k_scorer,
+        "type": DatasetType.MATHEMATICAL,
     },
     "gpqa": {
         "hf_path": "Idavidrein/gpqa",
@@ -272,6 +279,7 @@ DATASETS: dict[str, DatasetRecipe] = {
         "split": "train",  # GPQA only has train split
         "record_to_sample": gpqa_record_to_sample,
         "scorer": gpqa_scorer,
+        "type": DatasetType.MCQ,
     },
     "morehopqa": {
         # Uses custom loader (HF loading script is deprecated)
@@ -280,6 +288,7 @@ DATASETS: dict[str, DatasetRecipe] = {
         "record_to_sample": morehopqa_record_to_sample,
         "scorer": morehopqa_scorer,
         "system_prompt": "If the answer is a date, format it as YYYY-MM-DD.",
+        "type": DatasetType.FREE_RESPONSE,
     },
     "morehopqa_opus_correct": {
         # Subset of MoreHopQA that Opus 4.5 answered correctly (606 samples)
@@ -372,3 +381,9 @@ def get_dataset_system_prompt(name: str) -> str | None:
     if name not in DATASETS:
         raise ValueError(f"Unknown dataset: {name}. Available: {list(DATASETS.keys())}")
     return DATASETS[name].get("system_prompt")
+
+def get_dataset_type(name: str) -> DatasetType | None:
+    """Get the dataset-specific system prompt, if any."""
+    if name not in DATASETS:
+        raise ValueError(f"Unknown dataset: {name}. Available: {list(DATASETS.keys())}")
+    return DATASETS[name].get("type")

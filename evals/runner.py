@@ -21,7 +21,7 @@ from inspect_ai.solver import (
     Generate,
 )
 
-from .datasets import load_dataset, get_scorer, get_dataset_system_prompt
+from .datasets import load_dataset, get_scorer, get_dataset_system_prompt, get_dataset_type, DatasetType, ANSWER_LETTERS
 from .constraints import get_constraint
 
 
@@ -35,35 +35,27 @@ LOG_DIR = PROJECT_ROOT / "logs"
 
 # ============ System Prompts ============
 
-# Single-stage prompts
-BASE_SYSTEM_PROMPT_COT = """
-Solve the following problem. Show your reasoning in <reasoning> tags, then give your final answer in <answer> tags.
-
-For multiple choice questions, answer with just the letter (A, B, C, or D).
-For math problems, answer with just the number.
-
-Example (multiple choice):
-<reasoning>
+def get_base_system_prompt(reasoning: bool, dataset_type: DatasetType) -> str:
+    example = "\nExample:\n"
+    if reasoning:
+        prompt = "Solve the following problem. Show your reasoning in <reasoning> tags, then give your final answer in <answer> tags.\n"
+        example += """<reasoning>
 Step-by-step work here...
 </reasoning>
-<answer>B</answer>
-
-Example (math):
-<reasoning>
-Step-by-step work here...
-</reasoning>
-<answer>42</answer>
 """
+    else:
+        prompt = "Solve the following problem. Give your final answer in <answer> tags.\n"
+    
+    if dataset_type == DatasetType.MATHEMATICAL:
+        prompt += "Your answer should be a single number."
+        example += "<answer>42</answer>"
+    elif dataset_type == DatasetType.MCQ:
+        prompt += f"Your answer should be exactly one of the following letters: {ANSWER_LETTERS}"
+        example += "<answer>B</answer>"
+    elif dataset_type == DatasetType.FREE_RESPONSE:
+        example += "<answer>John</answer>"
 
-BASE_SYSTEM_PROMPT_NO_COT = """
-Solve the following problem. Give your final answer in <answer> tags.
-
-For multiple choice questions, answer with just the letter (A, B, C, or D).
-For free response problems, answer with just the final answer.
-
-Example:
-<answer>B</answer>
-"""
+    return prompt + example
 
 # Two-stage prompts
 BASE_REASONING_PROMPT = """
@@ -259,6 +251,7 @@ def build_task(
 
     # Get dataset-specific system prompt if any
     dataset_prompt = get_dataset_system_prompt(dataset_name)
+    dataset_type = get_dataset_type(dataset_name)
 
     if two_stage:  # Reason first, then answer
         constraint = get_constraint(constraint_name)
@@ -295,11 +288,7 @@ def build_task(
         constraint = get_constraint(constraint_name)
 
         # Choose base prompt based on whether constraint expects reasoning
-        base_prompt = (
-            BASE_SYSTEM_PROMPT_COT
-            if constraint.expects_reasoning
-            else BASE_SYSTEM_PROMPT_NO_COT
-        )
+        base_prompt = get_base_system_prompt(constraint.expects_reasoning, dataset_type)
         full_prompt = base_prompt + "\n" + constraint.system_prompt
         if dataset_prompt:
             full_prompt += "\n" + dataset_prompt
