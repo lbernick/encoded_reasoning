@@ -36,4 +36,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["evals", "logit_masking"]
+packages = ["src/encoded_reasoning"]
