@@ -21,9 +21,9 @@ from inspect_ai.solver import (
     Generate,
 )
 
-from .datasets import load_dataset, get_scorer, get_dataset_system_prompt, get_dataset_type, DatasetType, ANSWER_LETTERS
-from .constraints import get_constraint
-
+from .datasets import load_dataset, get_scorer, get_dataset_system_prompt, get_dataset_type 
+from .constraints import get_constraint, EMOJI_PATTERN
+from .prompts import get_base_system_prompt, get_example, get_base_answer_with_reasoning_system_prompt, BASE_REASONING_PROMPT
 
 from inspect_ai.model import get_model
 from ..logit_masking import model_api  # noqa: F401 — registers hf-masked provider
@@ -32,61 +32,7 @@ from ..logit_masking import model_api  # noqa: F401 — registers hf-masked prov
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 LOG_DIR = PROJECT_ROOT / "logs"
 
-
-# ============ System Prompts ============
-
-def get_base_system_prompt(reasoning: bool, dataset_type: DatasetType) -> str:
-    if reasoning:
-        prompt = "Solve the following problem. Show your reasoning in <reasoning> tags, then give your final answer in <answer> tags.\n"
-    else:
-        prompt = "Solve the following problem. Give your final answer in <answer> tags.\n"
-
-    if dataset_type == DatasetType.MATHEMATICAL:
-        prompt += "Your answer should be a single number."
-    elif dataset_type == DatasetType.MCQ:
-        prompt += f"Your answer should be exactly one of the following letters: {ANSWER_LETTERS}"
-
-    return prompt
-
-def get_example(reasoning_example: str, dataset_type: DatasetType) -> str:
-    example = "\nExample:\n"
-    if reasoning_example != "":
-        example += f"""<reasoning>
-{reasoning_example}
-</reasoning>
-"""
-    if dataset_type == DatasetType.MATHEMATICAL:
-        example += "<answer>42</answer>"
-    elif dataset_type == DatasetType.MCQ:
-        example += "<answer>B</answer>"
-    elif dataset_type == DatasetType.FREE_RESPONSE:
-        example += "<answer>John</answer>"
-
-    return example
-
-# Two-stage prompts
-BASE_REASONING_PROMPT = """
-Think about how you would solve the following problem. Reason step-by-step and output an explanation of how you would solve it.
-Do not output the answer.
-"""
-
-def get_base_answer_with_reasoning_system_prompt(dataset_type: DatasetType) -> str:
-    prompt = "Now, please answer the question immediately, without showing reasoning. Give your final answer in <answer> tags. "
-    example = "\nExample:\n"
-    if dataset_type == DatasetType.MATHEMATICAL:
-        prompt += "Your answer should be a single number."
-        example = "<answer>42</answer>"
-    elif dataset_type == DatasetType.MCQ:
-        prompt += f"Your answer should be exactly one of the following letters: {ANSWER_LETTERS}"
-        example = "<answer>B</answer>"
-    elif dataset_type == DatasetType.FREE_RESPONSE:
-        example = "<answer>John</answer>"
-
-    return prompt + example
-
-
 # ============ Solvers ============
-
 
 @solver
 def repeat_input_solver(n: int):
@@ -181,33 +127,11 @@ def strip_non_emoji_from_reasoning() -> Solver:
         for i in range(len(state.messages) - 1, -1, -1):
             msg = state.messages[i]
             if msg.role == "assistant" and isinstance(msg.content, str):
-                # Match full emoji sequences including:
-                # - Emoji with variation selectors (e.g., ❤️)
-                # - Emoji with skin tone modifiers
-                # - Emoji ZWJ sequences (e.g., 👨‍👩‍👧)
-                # - Keycap sequences (e.g., 1️⃣)
-                # - Flag sequences
-                # Excludes bare ASCII digits/symbols that are technically emoji-capable
-                emoji_pattern = regex.compile(
-                    r"(?:"
-                    # Keycap sequences: digit/symbol + VS16 + combining enclosing keycap
-                    r"[0-9#*]\ufe0f?\u20e3|"
-                    # Flag sequences (regional indicators)
-                    r"[\U0001F1E0-\U0001F1FF]{2}|"
-                    # Emoji ZWJ sequences and modified emoji
-                    r"(?:[\U0001F300-\U0001F9FF\U0001FA00-\U0001FAFF\u2600-\u27BF\u2300-\u23FF\u2B50\u2B55\u203C\u2049\u2934\u2935\u25AA\u25AB\u25B6\u25C0\u25FB-\u25FE\u2614\u2615\u2648-\u2653\u267F\u2693\u26A1\u26AA\u26AB\u26BD\u26BE\u26C4\u26C5\u26CE\u26D4\u26EA\u26F2\u26F3\u26F5\u26FA\u26FD\u2702\u2705\u2708-\u270D\u270F\u2712\u2714\u2716\u271D\u2721\u2728\u2733\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763\u2764\u2795-\u2797\u27A1\u27B0\u27BF\u2934\u2935\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55\u3030\u303D\u3297\u3299]|\U0001F000-\U0001F0FF)"
-                    r"(?:\ufe0f)?"  # Optional variation selector
-                    r"(?:\U0001F3FB-\U0001F3FF)?"  # Optional skin tone
-                    r"(?:\u200d(?:[\U0001F300-\U0001F9FF\U0001F3FB-\U0001F3FF\u2640\u2642\u2695\u2696\u2708\u2764\U0001F466-\U0001F469\U0001F48B])\ufe0f?)*"  # ZWJ sequences
-                    r")",
-                    regex.UNICODE,
-                )
-
                 # Process line by line to preserve newlines
                 lines = msg.content.split("\n")
                 stripped_lines = []
                 for line in lines:
-                    emojis = emoji_pattern.findall(line)
+                    emojis = EMOJI_PATTERN.findall(line)
                     stripped_lines.append("".join(emojis))
                 stripped_content = "\n".join(stripped_lines)
 

@@ -22,16 +22,18 @@ from transformers import (
 from trl import GRPOConfig, GRPOTrainer
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-from .constraints import RLObjective, OBJECTIVES
 from huggingface_hub import login
+from .grader import constrained_reasoning_substring, parse_reasoning_and_answer
+from ..evals.constraints import CONSTRAINTS, ReasoningConstraint
 from ..evals.datasets import DATASETS, DatasetRecipe
+from ..evals.prompts import get_base_system_prompt
 
 
 @dataclass
 class FinetuningArgs:
     model_name: str = "Qwen/Qwen2.5-7B-Instruct"
     dataset_name: str = "mawps"
-    objective: str = "emojis"
+    constraint: str = "only_emojis"
     use_curriculum_learning: bool = False
 
     learning_rate: float = 5e-6
@@ -95,9 +97,10 @@ class Trainer:
             args.output_dir = f"./outputs/grpo_{args.dataset_name}"
 
         self.args = args
-        objective = OBJECTIVES[args.objective]
-        self.system_prompt = objective.system_prompt
-        self.reward_function = objective.reward_function
+        self.dataset_recipe = DATASETS[args.dataset_name]
+        self.constraint = CONSTRAINTS[args.constraint]
+        self.system_prompt = get_base_system_prompt(reasoning=True, dataset_type=self.dataset_recipe["type"])
+        # self.reward_function = objective.reward_function
         self.scheduler = HyperparamScheduler(
             initial_value=1, final_value=0, total_steps=args.max_steps
         )
@@ -201,6 +204,21 @@ class Trainer:
 
         return formatted_dataset
 
+    def reward_function(self, generated_text, correct_answer, percent_reasoning_allowed) -> float:
+        reasoning, generated_answer = parse_reasoning_and_answer(generated_text)
+        if reasoning is None and generated_answer is None:
+            return -1.0
+        elif reasoning is None or generated_answer is None:
+            return -0.75
+        if generated_answer != correct_answer:
+            return -0.5
+        reasoning = constrained_reasoning_substring(reasoning, percent_reasoning_allowed)
+        if len(reasoning) == 0:
+            return 1.0
+        reward = self.constraint.reward_function(reasoning)
+        return reward
+
+    
     def compute_rewards(self, completions: List[str], **kwargs) -> List[float]:
         """
         Custom reward function for GRPO training.
@@ -286,7 +304,6 @@ class Trainer:
         print("=" * 80)
         print("RL TRAINING WITH GRPO")
         print("=" * 80)
-        dataset_recipe = DATASETS[self.args.dataset_name]
 
         wandb.init(
             project=self.args.wandb_project,
@@ -303,7 +320,7 @@ class Trainer:
             },
         )
 
-        train_dataset = self.prepare_dataset(dataset_recipe, self.system_prompt)
+        train_dataset = self.prepare_dataset(self.dataset_recipe, self.system_prompt)
         model, tokenizer = self.setup_model_and_tokenizer()
 
         # https://huggingface.co/docs/trl/main/en/grpo_trainer#trl.GRPOConfig

@@ -6,9 +6,37 @@ All other files reference this registry dynamically.
 """
 
 from dataclasses import dataclass
+import regex
 from typing import Callable
 
 from .token_filters import emoji_token_filter
+
+# Match full emoji sequences including:
+# - Emoji with variation selectors (e.g., ❤️)
+# - Emoji with skin tone modifiers
+# - Emoji ZWJ sequences (e.g., 👨‍👩‍👧)
+# - Keycap sequences (e.g., 1️⃣)
+# - Flag sequences
+# Excludes bare ASCII digits/symbols that are technically emoji-capable
+EMOJI_PATTERN = regex.compile(
+    r"(?:"
+    # Keycap sequences: digit/symbol + VS16 + combining enclosing keycap
+    r"[0-9#*]\ufe0f?\u20e3|"
+    # Flag sequences (regional indicators)
+    r"[\U0001F1E0-\U0001F1FF]{2}|"
+    # Emoji ZWJ sequences and modified emoji
+    r"(?:[\U0001F300-\U0001F9FF\U0001FA00-\U0001FAFF\u2600-\u27BF\u2300-\u23FF\u2B50\u2B55\u203C\u2049\u2934\u2935\u25AA\u25AB\u25B6\u25C0\u25FB-\u25FE\u2614\u2615\u2648-\u2653\u267F\u2693\u26A1\u26AA\u26AB\u26BD\u26BE\u26C4\u26C5\u26CE\u26D4\u26EA\u26F2\u26F3\u26F5\u26FA\u26FD\u2702\u2705\u2708-\u270D\u270F\u2712\u2714\u2716\u271D\u2721\u2728\u2733\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763\u2764\u2795-\u2797\u27A1\u27B0\u27BF\u2934\u2935\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55\u3030\u303D\u3297\u3299]|\U0001F000-\U0001F0FF)"
+    r"(?:\ufe0f)?"  # Optional variation selector
+    r"(?:\U0001F3FB-\U0001F3FF)?"  # Optional skin tone
+    r"(?:\u200d(?:[\U0001F300-\U0001F9FF\U0001F3FB-\U0001F3FF\u2640\u2642\u2695\u2696\u2708\u2764\U0001F466-\U0001F469\U0001F48B])\ufe0f?)*"  # ZWJ sequences
+    r")",
+    regex.UNICODE,
+)
+
+def percentage_emojis(reasoning: str) -> float:
+    emojis = EMOJI_PATTERN.findall(reasoning)
+    return len(emojis) / len(reasoning)
+
 
 
 @dataclass
@@ -61,6 +89,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         expects_reasoning=True,
         reasoning_example="🤔🔢🧑‍🤝‍🧑🧮⏳➕",
         allowed_token_filter=emoji_token_filter,
+        reward_function=percentage_emojis,
     ),
     # Only numbers
     # Filler tokens
