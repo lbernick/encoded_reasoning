@@ -29,7 +29,7 @@ from inspect_ai.model import get_model
 from ..logit_masking import model_api  # noqa: F401 — registers hf-masked provider
 
 # Project paths
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 LOG_DIR = PROJECT_ROOT / "logs"
 
 
