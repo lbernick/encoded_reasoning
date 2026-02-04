@@ -32,8 +32,8 @@ from ..evals.prompts import get_base_system_prompt, get_example
 
 @dataclass
 class FinetuningArgs:
-    model_name: str = "Qwen/Qwen2.5-7B-Instruct"
-    dataset_name: str = "mawps2"
+    model_name: str = "Qwen/Qwen2.5-14B-Instruct"
+    dataset_name: str = "gsm8k"
     constraint: str = "only_emojis"
     use_curriculum_learning: bool = False
 
