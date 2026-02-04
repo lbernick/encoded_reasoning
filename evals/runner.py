@@ -25,6 +25,8 @@ from .datasets import load_dataset, get_scorer, get_dataset_system_prompt
 from .constraints import get_constraint
 
 
+from inspect_ai.model import get_model
+import logit_masking.model_api  # noqa: F401 — registers hf-masked provider
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent
 LOG_DIR = PROJECT_ROOT / "logs"
@@ -232,6 +234,26 @@ def build_task(
     )
 
 
+def _resolve_model(model: str, constraint_name: str, force_answer_prefix: str | None = None):
+    """Resolve model string to a Model instance when logit masking is needed.
+
+    If the model uses the ``hf/`` prefix and the constraint defines an
+    ``allowed_token_filter``, returns a ``Model`` instance backed by the
+    ``hf-masked`` provider. Otherwise returns the original string and lets
+    inspect resolve it normally.
+    """
+    if model.startswith("hf/"):
+        constraint = get_constraint(constraint_name)
+        if constraint.allowed_token_filter is not None:
+            hf_model_name = model.removeprefix("hf/")
+            return get_model(
+                f"hf-masked/{hf_model_name}",
+                allowed_token_filter=constraint.allowed_token_filter,
+                force_answer_prefix=force_answer_prefix,
+            )
+    return model
+
+
 def run_eval(
     constraint_name: str = "unconstrained",
     model: str = "openrouter/openai/gpt-4o-mini",
@@ -243,13 +265,16 @@ def run_eval(
     filler_tokens: int = 0,
     two_stage: bool = False,
     name: str | None = None,
+    max_tokens: int | None = None,
+    force_answer_prefix: str | None = None,
 ):
     """Run an evaluation with a specified constraint.
 
     Args:
-        constraint_name: Reasoning constraint to apply (e.g., "baseline", "no_cot").
-                        Defaults to "unconstrained".
-        model: Model to evaluate (OpenRouter format, e.g., "openrouter/openai/gpt-4o-mini")
+        model: Model identifier. Use "hf/model-name" for local HuggingFace models,
+            or an OpenRouter path (e.g., "openrouter/openai/gpt-4o-mini") for API models.
+            When a hf/ model is used and the constraint defines allowed_token_filter,
+            logit masking is applied automatically via the hf-masked provider.
         dataset_name: Dataset to use
         n_samples: Number of samples to evaluate (None = full dataset)
         seed: Random seed for reproducibility
@@ -273,10 +298,13 @@ def run_eval(
         name=name,
     )
 
+    resolved_model = _resolve_model(model, constraint_name, force_answer_prefix=force_answer_prefix)
+
     results = inspect_eval(
         task,
-        model=model,
+        model=resolved_model,
         limit=n_samples,
+        max_tokens=max_tokens,
         log_dir=str(LOG_DIR),
         metadata={
             "constraint": constraint_name,

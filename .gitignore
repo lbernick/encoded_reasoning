@@ -1,7 +1,8 @@
-.env
+.env*
 __pycache__
 .venv
 logs/
 .DS_Store
+.idea/
 wandb
 outputs

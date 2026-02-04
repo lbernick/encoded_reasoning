@@ -14,6 +14,7 @@ Usage:
 """
 
 import argparse
+import os
 
 from .runner import run_eval
 from .datasets import DATASETS
@@ -32,24 +33,22 @@ def main():
     )
 
     parser.add_argument(
-        "-m",
-        "--model",
-        default="openrouter/openai/gpt-4o-mini",
-        help="Model to evaluate (OpenRouter format)",
+        "-m", "--model",
+        default=os.environ.get("MODEL", "openrouter/openai/gpt-4o-mini"),
+        help="Model to evaluate. Use 'hf/model-name' for local HuggingFace models "
+             "(enables logit masking when constraint supports it), or OpenRouter format for API models.",
     )
     parser.add_argument(
-        "-d",
-        "--dataset",
-        default="gsm8k",
+        "-d", "--dataset",
+        default=os.environ.get("DATASET", "gsm8k"),
         choices=list(DATASETS.keys()),
         help="Dataset to use",
     )
     parser.add_argument(
-        "-c",
-        "--constraint",
-        required=False,
+        "-c", "--constraint",
+        default=os.environ.get("CONSTRAINT"),
         choices=list(CONSTRAINTS.keys()),
-        help="Reasoning constraint to apply (required for single-stage, optional for two-stage)",
+        help="Reasoning constraint to apply",
     )
     parser.add_argument(
         "--name",
@@ -60,19 +59,25 @@ def main():
         "-n",
         "--n-samples",
         type=int,
-        default=10,
+        default=int(os.environ.get("N_SAMPLES", 10)),
         help="Number of samples from the dataset to evaluate (0 = full dataset)",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=int(os.environ.get("MAX_TOKENS", 256)),
+        help="Maximum tokens for model generation",
     )
     parser.add_argument(
         "--seed",
         type=int,
-        default=42,
+        default=int(os.environ.get("SEED", 42)),
         help="Random seed for reproducibility",
     )
     parser.add_argument(
         "--epochs",
         type=int,
-        default=1,
+        default=int(os.environ.get("EPOCHS", 1)),
         help="Number of times to run each sample (reduces variance via majority vote)",
     )
     parser.add_argument(
@@ -91,6 +96,12 @@ def main():
         "--two-stage",
         action="store_true",
         help="Use two-stage evaluation: reason first (without answer), then answer",
+    )
+    parser.add_argument(
+        "--force-answer-prefix",
+        type=bool,
+        default=False,
+        help="Force '\\n<answer>' after end tag",
     )
 
     args = parser.parse_args()
@@ -117,6 +128,7 @@ def main():
     print(f"  Constraint: {args.constraint or '(none)'}")
     print(f"  Mode:       {'two-stage' if args.two_stage else 'single-stage'}")
     print(f"  Samples:    {args.n_samples}")
+    print(f"  Max Tokens: {args.max_tokens}")
     print(f"  Epochs:     {args.epochs}")
     if not args.two_stage:
         print(f"  Repeat:     {args.repeat_input}")
@@ -135,6 +147,8 @@ def main():
         filler_tokens=args.filler_tokens,
         two_stage=args.two_stage,
         name=eval_name,
+        max_tokens=args.max_tokens,
+        force_answer_prefix="\n<answer>" if args.force_answer_prefix else None,
     )
 
     return results
