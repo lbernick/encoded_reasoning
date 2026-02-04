@@ -31,7 +31,7 @@ def main():
     parser.add_argument(
         "-d", "--dataset",
         default="gsm8k",
-        choices=list(DATASETS.keys()),
+        choices=list(DATASETS.keys()), 
     )
     parser.add_argument(
         "-c", "--constraint",
@@ -49,6 +49,12 @@ def main():
         "-n", "--n-samples",
         type=int,
         default=2,
+    )
+    parser.add_argument(
+        "--force-answer-prefix",
+        type=bool,
+        default=True,
+        help="Force '\\n<answer>' after end tag",
     )
     args = parser.parse_args()
 

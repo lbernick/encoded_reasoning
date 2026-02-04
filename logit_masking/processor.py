@@ -98,6 +98,7 @@ class MaskedReasoningProcessor(LogitsProcessor):
         self.end_ids = end_ids
         force_ids = list(end_ids)
         if force_answer_prefix:
+            print(f"Answer tag will be enforced at end.")
             force_ids += tokenizer.encode(force_answer_prefix, add_special_tokens=False)
         self.force_ids = force_ids
 
