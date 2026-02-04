@@ -19,6 +19,7 @@ dependencies = [
     "accelerate>=0.25.0",
     "bitsandbytes>=0.41.0",
     "optimum>=1.17.0",
+    "gptqmodel",
     "numpy>=1.24.0",
     "tqdm",
     "wandb>=0.16.0",
