@@ -185,13 +185,13 @@ class MaskedReasoningProcessor(LogitsProcessor):
 
         # End tag completed → stop masking
         if self.mask_on and self.end_tag in tail:
-            print(f"Masking off: end tag detected after {self._masked_count} tokens")
+            logger.info(f"Masking off: end tag detected after {self._masked_count} tokens")
             self.mask_on = False
             return scores
 
         # Start tag appeared → start masking
         if not self.mask_on and self.start_tag in tail:
-            print("Masking on: start tag detected")
+            logger.info("Masking on: start tag detected")
             self.mask_on = True
 
         if not self.mask_on:
@@ -203,7 +203,7 @@ class MaskedReasoningProcessor(LogitsProcessor):
         top_ids = scores[0].topk(1).indices.tolist()
         top_tokens = [(tid, self.tokenizer.decode([tid])) for tid in top_ids]
         if self.allowed_mask[top_ids[0]] == float("-inf"):
-            print(
+            logger.info(
                 f"[mask step {self._masked_count}] top unmasked is forbidden: {top_tokens}"
             )
 
@@ -217,11 +217,11 @@ class MaskedReasoningProcessor(LogitsProcessor):
 
         if force:
             if skip:
-                print(
+                logger.info(
                     f"Forcing end tag: partial end tag detected, skipping {skip} tokens"
                 )
             else:
-                print(
+                logger.info(
                     f"Forcing end tag: hit max masked tokens ({self.max_masked_tokens})"
                 )
             self._forcing_end = True
