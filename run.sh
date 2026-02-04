@@ -18,4 +18,4 @@ fi
 uv pip install -e .
 
 # Run evals, forwarding any CLI args
-python -m encoded_reasoning "$@"
+uv run python -m encoded_reasoning "$@"
