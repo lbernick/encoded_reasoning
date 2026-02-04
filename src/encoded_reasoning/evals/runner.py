@@ -114,23 +114,29 @@ def repeat_input_solver(n: int):
 
 
 @solver
-def filler_tokens_solver(n: int):
-    """Solver that adds n filler tokens (periods) to the assistant message."""
+def filler_tokens_solver(n: int, suffix: str = ""):
+    """Solver that adds n filler tokens (periods) to the assistant message as a prefill.
+
+    Args:
+        n: Number of filler tokens (periods) to add
+        suffix: Optional text to append after the filler tokens (e.g., "<answer>")
+    """
 
     async def solve(state: TaskState, generate):
         if n > 0:
-            # Generate the response first
-            result = await generate(state)
-
-            # Add filler tokens to the assistant's response
-            if result.choices and result.choices[0].message.content:
-                filler = "." * n
-                result.choices[0].message.content = (
-                    filler + "\n" + result.choices[0].message.content
-                )
-
-            return result
-        return await generate(state)
+            from inspect_ai.model import ChatMessageAssistant
+            filler = "." * n
+            content = filler + suffix
+            state.messages.append(
+                ChatMessageAssistant(content=content)
+            )
+        elif suffix:
+            # If no filler tokens but suffix provided, just add the suffix
+            from inspect_ai.model import ChatMessageAssistant
+            state.messages.append(
+                ChatMessageAssistant(content=suffix)
+            )
+        return state
 
     return solve
 
@@ -312,12 +318,10 @@ def build_task(
         if repeat_input > 1:
             solvers.append(repeat_input_solver(repeat_input))
 
-        if filler_tokens > 0:
-            solvers.append(filler_tokens_solver(filler_tokens))
-
-        # Add prefill for no-COT, then generate
-        if not constraint.expects_reasoning:
-            solvers.append(assistant_message("<answer>"))
+        # Combine filler tokens and answer prefill into single assistant message
+        if filler_tokens > 0 or not constraint.expects_reasoning:
+            suffix = "<answer>" if not constraint.expects_reasoning else ""
+            solvers.append(filler_tokens_solver(filler_tokens, suffix=suffix))
 
         solvers.append(generate())
 
