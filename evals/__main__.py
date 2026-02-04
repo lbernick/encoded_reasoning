@@ -103,6 +103,12 @@ def main():
         default=False,
         help="Force '\\n<answer>' after end tag",
     )
+    parser.add_argument(
+        "--use-logit-mask",
+        type=bool,
+        default=False,
+        help="Use logit masking",
+    )
 
     args = parser.parse_args()
 
@@ -149,6 +155,7 @@ def main():
         name=eval_name,
         max_tokens=args.max_tokens,
         force_answer_prefix="\n<answer>" if args.force_answer_prefix else None,
+        use_logit_mask=args.use_logit_mask,
     )
 
     return results

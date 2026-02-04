@@ -234,7 +234,7 @@ def build_task(
     )
 
 
-def _resolve_model(model: str, constraint_name: str, force_answer_prefix: str | None = None):
+def _resolve_model(model: str, constraint_name: str, use_logit_mask: bool, force_answer_prefix: str | None = None):
     """Resolve model string to a Model instance when logit masking is needed.
 
     If the model uses the ``hf/`` prefix and the constraint defines an
@@ -244,7 +244,7 @@ def _resolve_model(model: str, constraint_name: str, force_answer_prefix: str | 
     """
     if model.startswith("hf/"):
         constraint = get_constraint(constraint_name)
-        if constraint.allowed_token_filter is not None:
+        if constraint.allowed_token_filter is not None and use_logit_mask:
             hf_model_name = model.removeprefix("hf/")
             return get_model(
                 f"hf-masked/{hf_model_name}",
@@ -267,6 +267,7 @@ def run_eval(
     name: str | None = None,
     max_tokens: int | None = None,
     force_answer_prefix: str | None = None,
+    use_logit_mask: bool = False,
 ):
     """Run an evaluation with a specified constraint.
 
@@ -298,7 +299,7 @@ def run_eval(
         name=name,
     )
 
-    resolved_model = _resolve_model(model, constraint_name, force_answer_prefix=force_answer_prefix)
+    resolved_model = _resolve_model(model, constraint_name, use_logit_mask, force_answer_prefix=force_answer_prefix)
 
     results = inspect_eval(
         task,
