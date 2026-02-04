@@ -249,6 +249,23 @@ def mawps_scorer() -> Scorer:
     return score
 
 
+def mawps2_record_to_sample(record: dict) -> Sample:
+    # Answer is a list, extract the first element
+    answer = extract_answer_from_gsm8k(record["answer"])
+
+    return Sample(
+        input=record["question"],
+        target=answer,
+        metadata={
+            "id": record.get("id", ""),
+            "type": record.get("type", ""),
+            "cot": record.get("cot", []),
+        },
+    )
+
+def mawps2_format_func(example):
+    return example["question"], extract_answer_from_gsm8k(example["answer"])
+
 # ============ MoreHopQA ============
 
 # MoreHopQA data sources
@@ -391,11 +408,21 @@ DATASETS: dict[str, DatasetRecipe] = {
         # MAWPS: elementary math word problems (1921 samples)
         # Uses nguyen-brat/mawps which has actual numbers in questions
         "hf_path": "nguyen-brat/mawps",
-        "train_split": "train",  # Only has train split
+        "train_split": "train",
         "test_split": "train",  # Only has train split
         "config": "default",
         "record_to_sample": mawps_record_to_sample,
         "format_func": mawps_format_func,
+        "scorer": mawps_scorer,
+        "type": DatasetType.MATHEMATICAL,
+    },
+    "mawps2": {
+        "hf_path": "garrethlee/MAWPS",
+        "train_split": "train", 
+        "test_split": "test",
+        "config": "default",
+        "record_to_sample": mawps2_record_to_sample,
+        "format_func": mawps2_format_func,
         "scorer": mawps_scorer,
         "type": DatasetType.MATHEMATICAL,
     },
