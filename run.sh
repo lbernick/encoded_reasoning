@@ -11,7 +11,12 @@ fi
 # Install uv if not available
 if ! command -v uv &> /dev/null; then
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    source $HOME/.cargo/env
+    export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+fi
+
+# Create venv if it doesn't exist
+if [ ! -d ".venv" ]; then
+    uv venv
 fi
 
 # Install project in editable mode

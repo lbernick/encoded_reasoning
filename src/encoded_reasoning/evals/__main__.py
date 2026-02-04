@@ -103,7 +103,7 @@ def main():
     parser.add_argument(
         "--force-answer-prefix",
         type=bool,
-        default=False,
+        default=os.environ.get("FORCE_ANSWER_PREFIX", "").lower() in ("true", "1"),
         help="Force '\\n<answer>' after end tag",
     )
     parser.add_argument(
