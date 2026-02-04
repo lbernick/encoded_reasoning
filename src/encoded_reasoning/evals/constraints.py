@@ -55,6 +55,7 @@ class ReasoningConstraint:
     # hard-enforce that only these tokens can appear inside <reasoning> tags.
     # When None, no logit masking is applied (soft enforcement via prompt only).
     allowed_token_filter: Callable | None = None
+    # A function that accepts a reasoning string and returns a float between 0 and 1
     reward_function: Callable | None = None
 
 

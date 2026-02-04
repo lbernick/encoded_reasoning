@@ -26,7 +26,7 @@ from huggingface_hub import login
 from .grader import constrained_reasoning_substring, parse_reasoning_and_answer
 from ..evals.constraints import CONSTRAINTS, ReasoningConstraint
 from ..evals.datasets import DATASETS, DatasetRecipe
-from ..evals.prompts import get_base_system_prompt
+from ..evals.prompts import get_base_system_prompt, get_example
 
 
 @dataclass
@@ -99,7 +99,13 @@ class Trainer:
         self.args = args
         self.dataset_recipe = DATASETS[args.dataset_name]
         self.constraint = CONSTRAINTS[args.constraint]
-        self.system_prompt = get_base_system_prompt(reasoning=True, dataset_type=self.dataset_recipe["type"])
+        # FIXME: Dedupe with code in runner.py
+        dataset_type = self.dataset_recipe["type"]
+        base_system_prompt = get_base_system_prompt(reasoning=True, dataset_type=dataset_type)
+        example = get_example(self.constraint.reasoning_example, dataset_type)
+        full_prompt = base_system_prompt + "\n" + self.constraint.system_prompt + "\n" + self.dataset_recipe.get("system_prompt", "")
+        full_prompt += example
+        self.system_prompt = full_prompt
         # self.reward_function = objective.reward_function
         self.scheduler = HyperparamScheduler(
             initial_value=1, final_value=0, total_steps=args.max_steps
