@@ -134,7 +134,7 @@ def grade_reasoning_and_answer(
     reasoning = constrained_reasoning_substring(reasoning, percent_reasoning_allowed)
 
     # Check if reasoning contains any non-emoji characters or disallowed emojis
-    emoji_count = [is_emoji(c, False) for c in reasoning]
+    emoji_count = sum([is_emoji(c, False) for c in reasoning])
 
     # Check if answer matches correct_answer
     if generated_answer != correct_answer:

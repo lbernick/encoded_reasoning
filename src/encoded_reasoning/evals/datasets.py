@@ -166,6 +166,69 @@ def gpqa_scorer() -> Scorer:
     return score
 
 
+# ============ MAWPS ============
+
+
+def mawps_record_to_sample(record: dict) -> Sample:
+    """Convert MAWPS record to Sample.
+
+    MAWPS (MAth Word ProblemS) contains elementary math word problems
+    with arithmetic operations (addition, subtraction, multiplication, division).
+    """
+    # Answer is a list, extract the first element
+    answer = record["answer"]
+    if isinstance(answer, list):
+        answer = answer[0]
+
+    # Normalize answer: remove trailing .0 for whole numbers
+    answer_str = str(answer)
+    if answer_str.endswith(".0"):
+        answer_str = answer_str[:-2]
+
+    return Sample(
+        input=record["question"],
+        target=answer_str,
+        metadata={
+            "id": record.get("id", ""),
+            "type": record.get("type", ""),
+            "cot": record.get("cot", []),
+        },
+    )
+
+
+@scorer(metrics=[accuracy(), stderr()])
+def mawps_scorer() -> Scorer:
+    """Scorer for MAWPS - extracts numeric answer and compares."""
+
+    async def score(state: TaskState, target: Target) -> Score:
+        predicted = extract_number_answer(state.output.completion)
+
+        if predicted is None:
+            return Score(
+                value=False,
+                answer=None,
+                explanation=f"Could not extract answer. Expected: {target.text}",
+            )
+
+        # Normalize both for comparison
+        # Remove trailing .0 from predicted if present
+        pred_normalized = predicted
+        if pred_normalized.endswith(".0"):
+            pred_normalized = pred_normalized[:-2]
+
+        target_normalized = target.text
+        if target_normalized.endswith(".0"):
+            target_normalized = target_normalized[:-2]
+
+        return Score(
+            value=(pred_normalized == target_normalized),
+            answer=predicted,
+            explanation=f"Predicted: {predicted}, Expected: {target.text}",
+        )
+
+    return score
+
+
 # ============ MoreHopQA ============
 
 # MoreHopQA data sources
@@ -298,6 +361,16 @@ DATASETS: dict[str, DatasetRecipe] = {
         "scorer": morehopqa_scorer,
         "system_prompt": "If the answer is a date, format it as YYYY-MM-DD.",
         "filter_ids_file": MOREHOPQA_OPUS_CORRECT_IDS_PATH,
+        "type": DatasetType.FREE_RESPONSE,
+    },
+    "mawps": {
+        # MAWPS: elementary math word problems (1921 samples)
+        # Uses nguyen-brat/mawps which has actual numbers in questions
+        "hf_path": "nguyen-brat/mawps",
+        "split": "train",  # Only has train split
+        "record_to_sample": mawps_record_to_sample,
+        "scorer": mawps_scorer,
+        "type": DatasetType.MATHEMATICAL,
     },
 }
 
