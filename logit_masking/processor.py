@@ -29,26 +29,40 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, LogitsProcessor
 logger = logging.getLogger(__name__)
 
 
+def _is_prequantized(model_name: str) -> bool:
+    """Check if the model name indicates a pre-quantized checkpoint."""
+    lower = model_name.lower()
+    return any(tag in lower for tag in ["gptq", "awq", "gguf"])
+
+
 def load_model(model_name: str) -> tuple[AutoTokenizer, AutoModelForCausalLM]:
     """Load a HuggingFace model and tokenizer.
 
-    Attempts 8-bit quantisation first, falling back to fp16.
+    Pre-quantized models (GPTQ/AWQ) are loaded directly.
+    Other models attempt 8-bit quantization first, falling back to fp16.
 
     Args:
-        model_name: HuggingFace model name or path
-            (e.g. "meta-llama/Llama-3.2-1B-Instruct").
+        model_name: HuggingFace model name or path.
 
     Returns:
         (tokenizer, model) tuple.
     """
     tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    if _is_prequantized(model_name):
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name, device_map="auto"
+        )
+        print(f"Loaded {model_name} (pre-quantized)")
+        return tokenizer, model
+
     try:
         model = AutoModelForCausalLM.from_pretrained(
             model_name, device_map="auto", load_in_8bit=True
         )
         print(f"Loaded {model_name} in 8-bit")
     except Exception as e:
-        logger.warning(f"8-bit loading failed ({e}), falling back to fp16")
+        print(f"8-bit loading failed ({e}), falling back to fp16")
         model = AutoModelForCausalLM.from_pretrained(
             model_name, device_map="auto", dtype=torch.float16
         )
