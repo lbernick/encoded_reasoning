@@ -24,7 +24,7 @@ from huggingface_hub import login
 @dataclass
 class FinetuningArgs:
     model_name: str = "Qwen/Qwen2.5-7B-Instruct"
-    dataset_name: str = "addsub"
+    dataset_name: str = "mawps"
     objective: str = "emojis"
     use_curriculum_learning: bool = False
 

@@ -54,6 +54,16 @@ ADDSUB = DatasetRecipe(
     format_func=format_addsub,
 )
 
+
+def format_mawps(example):
+    return example["question"], extract_answer_from_gsm8k(example["answer"])
+
+MAWPS = DatasetRecipe(
+    name="garrethlee/MAWPS",
+    config="default",
+    split="train",
+    format_func=format_mawps,
+)
 # ============================================================================
 # Simple Math
 # ============================================================================
@@ -74,5 +84,6 @@ SIMPLE_MATH = DatasetRecipe(
 DATASETS = {
     "gsm8k": GSM8K,
     "simple_math": SIMPLE_MATH,
-    "addsub": ADDSUB
+    "mawps": MAWPS,
+    #"addsub": ADDSUB
 }
