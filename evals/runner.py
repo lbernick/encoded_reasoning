@@ -107,23 +107,19 @@ def repeat_input_solver(n: int):
 
 @solver
 def filler_tokens_solver(n: int):
-    """Solver that adds n filler tokens (periods) to the user prompt."""
+    """Solver that adds n filler tokens (periods) to the assistant message."""
     async def solve(state: TaskState, generate):
-        if n > 0 and state.messages:
-            # Create new message list to avoid mutating shared message objects
-            # (which can cause all samples to have the same question)
-            from copy import copy
-            new_messages = []
-            for msg in state.messages:
-                if msg.role == "user" and isinstance(msg.content, str):
-                    # Create a copy with filler content instead of mutating original
-                    new_msg = copy(msg)
-                    new_msg.content = msg.content + "\n" + "." * n
-                    new_messages.append(new_msg)
-                else:
-                    new_messages.append(msg)
-            state.messages = new_messages
-        return state
+        if n > 0:
+            # Generate the response first
+            result = await generate(state)
+
+            # Add filler tokens to the assistant's response
+            if result.choices and result.choices[0].message.content:
+                filler = "." * n
+                result.choices[0].message.content = filler + "\n" + result.choices[0].message.content
+
+            return result
+        return await generate(state)
     return solve
 
 
@@ -150,6 +146,63 @@ def insert_system_message(content: str, insert_at_beginning: bool = True, **para
     return solve
 
 
+@solver
+def strip_non_emoji_from_reasoning() -> Solver:
+    """Solver that strips non-emoji characters from the last assistant message.
+
+    This is useful for two-stage evaluation where you want to test if the model
+    can answer correctly when its reasoning is reduced to only emojis.
+    Preserves newlines to maintain structure.
+    """
+    import regex  # Use regex module for proper Unicode emoji support
+
+    async def solve(state: TaskState, generate: Generate) -> TaskState:
+        # Find the last assistant message
+        for i in range(len(state.messages) - 1, -1, -1):
+            msg = state.messages[i]
+            if msg.role == "assistant" and isinstance(msg.content, str):
+                # Match full emoji sequences including:
+                # - Emoji with variation selectors (e.g., ❤️)
+                # - Emoji with skin tone modifiers
+                # - Emoji ZWJ sequences (e.g., 👨‍👩‍👧)
+                # - Keycap sequences (e.g., 1️⃣)
+                # - Flag sequences
+                # Excludes bare ASCII digits/symbols that are technically emoji-capable
+                emoji_pattern = regex.compile(
+                    r'(?:'
+                    # Keycap sequences: digit/symbol + VS16 + combining enclosing keycap
+                    r'[0-9#*]\ufe0f?\u20e3|'
+                    # Flag sequences (regional indicators)
+                    r'[\U0001F1E0-\U0001F1FF]{2}|'
+                    # Emoji ZWJ sequences and modified emoji
+                    r'(?:[\U0001F300-\U0001F9FF\U0001FA00-\U0001FAFF\u2600-\u27BF\u2300-\u23FF\u2B50\u2B55\u203C\u2049\u2934\u2935\u25AA\u25AB\u25B6\u25C0\u25FB-\u25FE\u2614\u2615\u2648-\u2653\u267F\u2693\u26A1\u26AA\u26AB\u26BD\u26BE\u26C4\u26C5\u26CE\u26D4\u26EA\u26F2\u26F3\u26F5\u26FA\u26FD\u2702\u2705\u2708-\u270D\u270F\u2712\u2714\u2716\u271D\u2721\u2728\u2733\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763\u2764\u2795-\u2797\u27A1\u27B0\u27BF\u2934\u2935\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55\u3030\u303D\u3297\u3299]|\U0001F000-\U0001F0FF)'
+                    r'(?:\ufe0f)?'  # Optional variation selector
+                    r'(?:\U0001F3FB-\U0001F3FF)?'  # Optional skin tone
+                    r'(?:\u200d(?:[\U0001F300-\U0001F9FF\U0001F3FB-\U0001F3FF\u2640\u2642\u2695\u2696\u2708\u2764\U0001F466-\U0001F469\U0001F48B])\ufe0f?)*'  # ZWJ sequences
+                    r')',
+                    regex.UNICODE
+                )
+
+                # Process line by line to preserve newlines
+                lines = msg.content.split('\n')
+                stripped_lines = []
+                for line in lines:
+                    emojis = emoji_pattern.findall(line)
+                    stripped_lines.append(''.join(emojis))
+                stripped_content = '\n'.join(stripped_lines)
+
+                # Update the message content
+                from copy import copy
+                new_msg = copy(msg)
+                new_msg.content = stripped_content if stripped_content.strip() else "(no emojis found)"
+                state.messages[i] = new_msg
+                break
+
+        return state
+
+    return solve
+
+
 # ============ Evaluation Runner ============
 
 def build_task(
@@ -160,6 +213,7 @@ def build_task(
     repeat_input: int = 1,
     filler_tokens: int = 0,
     two_stage: bool = False,
+    strip_reasoning: bool = False,
     name: str | None = None,
 ) -> Task:
     """Build a single evaluation task.
@@ -171,13 +225,18 @@ def build_task(
         seed: Random seed for reproducibility
         epochs: Number of times to run each sample (reduces variance via majority vote)
         repeat_input: Number of times to repeat the question in the prompt (single-stage only)
-        filler_tokens: Number of filler tokens (periods) to add to the prompt (single-stage only)
+        filler_tokens: Number of filler tokens (periods) to add to the assistant message (single-stage only)
         two_stage: If True, use two-stage evaluation (reason first, then answer)
+        strip_reasoning: If True (requires two_stage), strip non-emoji characters from
+                         reasoning before generating the final answer
         name: Name for this task. Defaults to '{constraint}_{dataset}'
 
     Returns:
         Inspect Task
     """
+    if strip_reasoning and not two_stage:
+        raise ValueError("strip_reasoning requires two_stage=True")
+
     dataset = load_dataset(dataset_name, shuffle=True, seed=seed)
     scorer_fn = get_scorer(dataset_name)
 
@@ -190,14 +249,24 @@ def build_task(
         if dataset_prompt:
             reasoning_prompt += "\n" + dataset_prompt
 
-        task_name = name or f"2stage_{constraint_name}_{dataset_name}"
+        if strip_reasoning:
+            task_name = name or f"2stage_stripped_{constraint_name}_{dataset_name}"
+        else:
+            task_name = name or f"2stage_{constraint_name}_{dataset_name}"
 
         solvers = [
             insert_system_message(reasoning_prompt),
             generate(),
+        ]
+
+        # Optionally strip non-emoji characters from reasoning
+        if strip_reasoning:
+            solvers.append(strip_non_emoji_from_reasoning())
+
+        solvers.extend([
             insert_system_message(BASE_ANSWER_WITH_REASONING_PROMPT, insert_at_beginning=False),
             generate(),
-        ]
+        ])
     else: # reason and answer in same generation
         if not constraint_name:
             raise ValueError("constraint_name is required for single-stage mode")
@@ -264,6 +333,7 @@ def run_eval(
     repeat_input: int = 1,
     filler_tokens: int = 0,
     two_stage: bool = False,
+    strip_reasoning: bool = False,
     name: str | None = None,
     max_tokens: int | None = None,
     force_answer_prefix: str | None = None,
@@ -281,8 +351,10 @@ def run_eval(
         seed: Random seed for reproducibility
         epochs: Number of times to run each sample (reduces variance via majority vote)
         repeat_input: Number of times to repeat the question in the prompt (single-stage only)
-        filler_tokens: Number of filler tokens (periods) to add to the prompt (single-stage only)
+        filler_tokens: Number of filler tokens (periods) to add to the assistant message (single-stage only)
         two_stage: If True, use two-stage evaluation (reason first, then answer)
+        strip_reasoning: If True (requires two_stage), strip non-emoji characters from
+                         reasoning before generating the final answer
         name: Name for eval run. Defaults to '{constraint}_{dataset}'
 
     Returns:
@@ -296,6 +368,7 @@ def run_eval(
         repeat_input=repeat_input,
         filler_tokens=filler_tokens,
         two_stage=two_stage,
+        strip_reasoning=strip_reasoning,
         name=name,
     )
 
@@ -312,6 +385,7 @@ def run_eval(
             "dataset": dataset_name,
             "seed": seed,
             "two_stage": two_stage,
+            "strip_reasoning": strip_reasoning,
         },
     )
 

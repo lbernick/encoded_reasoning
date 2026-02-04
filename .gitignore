@@ -6,3 +6,8 @@ logs/
 .idea/
 wandb
 outputs
+__marimo__
+notebooks/data/
+data/
+evals/data/*
+!evals/data/morehopqa_opus_correct_ids.json

@@ -9,8 +9,12 @@ dependencies = [
     "inspect_ai",
     "ipykernel",
     "ipywidgets",
+    "marimo",
+    "nest-asyncio",
     "openai",
+    "openpyxl",
     "python-dotenv",
+    "regex",
     "tabulate",
     "torch>=2.0.0",
     "transformers>=4.36.0",
@@ -24,6 +28,7 @@ dependencies = [
     "tqdm",
     "wandb>=0.16.0",
     "regex",
+    "matplotlib>=3.10.8",
 ]
 
 [build-system]

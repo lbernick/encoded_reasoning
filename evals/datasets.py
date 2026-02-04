@@ -11,14 +11,15 @@ Each dataset defines:
 
 # Load environment variables BEFORE any other imports
 # (Inspect reads OPENROUTER_API_KEY at import time)
-import os
 from dotenv import load_dotenv
-
-load_dotenv()
 
 import random
 import re
 from typing import Any, Callable
+
+from pathlib import Path
+import json as json_module
+import urllib.request
 
 import pandas as pd
 
@@ -26,6 +27,7 @@ from inspect_ai.dataset import Sample, hf_dataset, Dataset, MemoryDataset
 from inspect_ai.scorer import Scorer, Score, Target, accuracy, stderr, scorer
 from inspect_ai.solver import TaskState
 
+load_dotenv()
 # Letters for multiple choice options
 ANSWER_LETTERS = ["A", "B", "C", "D"]
 
@@ -165,10 +167,16 @@ def gpqa_scorer() -> Scorer:
 
 # ============ MoreHopQA ============
 
-# MoreHopQA parquet URLs (dataset uses deprecated loading script, so we load directly)
+# MoreHopQA data sources
 MOREHOPQA_PARQUET_URLS = {
     "verified": "https://huggingface.co/datasets/alabnii/morehopqa/resolve/main/verified/test-00000-of-00001.parquet",
 }
+MOREHOPQA_JSON_URL = "https://huggingface.co/datasets/alabnii/morehopqa/raw/main/data/with_human_verification.json"
+
+# Path to list of question IDs that Opus got correct
+MOREHOPQA_OPUS_CORRECT_IDS_PATH = (
+    Path(__file__).parent / "data" / "morehopqa_opus_correct_ids.json"
+)
 
 
 def morehopqa_record_to_sample(row: dict) -> Sample:
@@ -182,6 +190,7 @@ def morehopqa_record_to_sample(row: dict) -> Sample:
         input=row["question"],
         target=str(row["answer"]),
         metadata={
+            "question_id": row.get("_id", ""),
             "reasoning_type": row.get("reasoning_type", ""),
             "no_of_hops": row.get("no_of_hops", ""),
             "answer_type": row.get("answer_type", ""),
@@ -267,10 +276,19 @@ DATASETS: dict[str, DatasetRecipe] = {
     "morehopqa": {
         # Uses custom loader (HF loading script is deprecated)
         # Human-verified subset with 1118 samples
-        "parquet_url": MOREHOPQA_PARQUET_URLS["verified"],
+        "json_url": MOREHOPQA_JSON_URL,
         "record_to_sample": morehopqa_record_to_sample,
         "scorer": morehopqa_scorer,
         "system_prompt": "If the answer is a date, format it as YYYY-MM-DD.",
+    },
+    "morehopqa_opus_correct": {
+        # Subset of MoreHopQA that Opus 4.5 answered correctly (606 samples)
+        # Useful for testing other models on questions a strong model can solve
+        "json_url": MOREHOPQA_JSON_URL,
+        "record_to_sample": morehopqa_record_to_sample,
+        "scorer": morehopqa_scorer,
+        "system_prompt": "If the answer is a date, format it as YYYY-MM-DD.",
+        "filter_ids_file": MOREHOPQA_OPUS_CORRECT_IDS_PATH,
     },
 }
 
@@ -298,6 +316,28 @@ def load_dataset(
     recipe = DATASETS[name]
 
     # Handle datasets that need custom loading (e.g., deprecated HF loading scripts)
+    if "json_url" in recipe:
+        # Load from JSON URL
+        json_url = recipe["json_url"]
+        with urllib.request.urlopen(json_url) as response:
+            data = json_module.loads(response.read().decode())
+
+        # Filter by IDs if specified
+        filter_ids_file = recipe.get("filter_ids_file")
+        if filter_ids_file and Path(filter_ids_file).exists():
+            with open(filter_ids_file) as f:
+                allowed_ids = set(json_module.load(f))
+            data = [row for row in data if row.get("_id") in allowed_ids]
+
+        record_to_sample = recipe["record_to_sample"]
+        samples = [record_to_sample(row) for row in data]
+
+        if shuffle:
+            random.seed(seed)
+            random.shuffle(samples)
+
+        return MemoryDataset(samples)
+
     if "parquet_url" in recipe:
         df = pd.read_parquet(recipe["parquet_url"])
         record_to_sample = recipe["record_to_sample"]

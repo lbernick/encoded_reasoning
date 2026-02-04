@@ -90,7 +90,7 @@ def main():
         "--filler-tokens",
         type=int,
         default=0,
-        help="Number of filler tokens (periods) to add to the prompt (single-stage only)",
+        help="Number of filler tokens (periods) to add to the assistant message (single-stage only)",
     )
     parser.add_argument(
         "--two-stage",
@@ -109,6 +109,11 @@ def main():
         default=False,
         help="Use logit masking",
     )
+    parser.add_argument(
+        "--strip-reasoning",
+        action="store_true",
+        help="Strip non-emoji characters from reasoning before final answer (requires --two-stage)"
+    )
 
     args = parser.parse_args()
 
@@ -116,10 +121,17 @@ def main():
     if not args.two_stage and not args.constraint:
         parser.error("--constraint is required for single-stage mode (or use --two-stage)")
 
+    # Validate: strip-reasoning requires two-stage
+    if args.strip_reasoning and not args.two_stage:
+        parser.error("--strip-reasoning requires --two-stage")
+
     # Build eval name
     if args.two_stage:
         constraint_part = args.constraint or "unconstrained"
-        eval_name = args.name or f"2stage_{constraint_part}_{args.dataset}_{short_model_name(args.model)}"
+        if args.strip_reasoning:
+            eval_name = args.name or f"2stage_stripped_{constraint_part}_{args.dataset}_{short_model_name(args.model)}"
+        else:
+            eval_name = args.name or f"2stage_{constraint_part}_{args.dataset}_{short_model_name(args.model)}"
     else:
         eval_name = (
             args.name or f"{args.constraint}_{args.dataset}_{short_model_name(args.model)}"
@@ -132,7 +144,10 @@ def main():
     print(f"  Model:      {args.model}")
     print(f"  Dataset:    {args.dataset}")
     print(f"  Constraint: {args.constraint or '(none)'}")
-    print(f"  Mode:       {'two-stage' if args.two_stage else 'single-stage'}")
+    mode_str = "two-stage" if args.two_stage else "single-stage"
+    if args.strip_reasoning:
+        mode_str += " (strip non-emoji)"
+    print(f"  Mode:       {mode_str}")
     print(f"  Samples:    {args.n_samples}")
     print(f"  Max Tokens: {args.max_tokens}")
     print(f"  Epochs:     {args.epochs}")
@@ -152,6 +167,7 @@ def main():
         repeat_input=args.repeat_input,
         filler_tokens=args.filler_tokens,
         two_stage=args.two_stage,
+        strip_reasoning=args.strip_reasoning,
         name=eval_name,
         max_tokens=args.max_tokens,
         force_answer_prefix="\n<answer>" if args.force_answer_prefix else None,
