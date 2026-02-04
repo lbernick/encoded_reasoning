@@ -22,8 +22,6 @@ dependencies = [
     "peft>=0.18.1",
     "accelerate>=0.25.0",
     "bitsandbytes>=0.41.0;sys_platform=='linux'",
-    "optimum>=1.17.0",
-    "autoawq;sys_platform=='linux'",
     "numpy>=1.24.0",
     "tqdm",
     "wandb>=0.16.0",
