@@ -26,7 +26,7 @@ from .constraints import get_constraint
 
 
 from inspect_ai.model import get_model
-import logit_masking.model_api  # noqa: F401 — registers hf-masked provider
+from ..logit_masking import model_api  # noqa: F401 — registers hf-masked provider
 
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -45,7 +45,7 @@ Step-by-step work here...
 """
     else:
         prompt = "Solve the following problem. Give your final answer in <answer> tags.\n"
-    
+
     if dataset_type == DatasetType.MATHEMATICAL:
         prompt += "Your answer should be a single number."
         example += "<answer>42</answer>"
@@ -74,7 +74,7 @@ def get_base_answer_with_reasoning_system_prompt(dataset_type: DatasetType) -> s
         example = "<answer>B</answer>"
     elif dataset_type == DatasetType.FREE_RESPONSE:
         example = "<answer>John</answer>"
-    
+
     return prompt + example
 
 
