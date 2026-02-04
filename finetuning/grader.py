@@ -3,6 +3,52 @@ from typing import Any, Tuple
 import math
 
 
+def is_emoji(char: str, allow_number_and_letter_emojis: bool) -> bool:
+    code_point = ord(char)
+    if char.isspace():
+        return False
+    if code_point < 128:  # ASCII range
+        return False
+    if is_number_or_letter_emoji(char):
+        return allow_number_and_letter_emojis
+    
+    # Common emoji ranges
+    emoji_ranges = [
+        (0x1F600, 0x1F64F),  # Emoticons
+        (0x1F300, 0x1F5FF),  # Miscellaneous Symbols and Pictographs
+        (0x1F680, 0x1F6FF),  # Transport and Map Symbols
+        (0x1F700, 0x1F77F),  # Alchemical Symbols
+        (0x1F780, 0x1F7FF),  # Geometric Shapes Extended
+        (0x1F800, 0x1F8FF),  # Supplemental Arrows-C
+        (0x1F900, 0x1F9FF),  # Supplemental Symbols and Pictographs
+        (0x1FA00, 0x1FA6F),  # Chess Symbols
+        (0x1FA70, 0x1FAFF),  # Symbols and Pictographs Extended-A
+        (0x2600, 0x26FF),    # Miscellaneous Symbols
+        (0x2700, 0x27BF),    # Dingbats
+        (0x1F000, 0x1F02F),  # Mahjong Tiles
+        (0x1F0A0, 0x1F0FF),  # Playing Cards
+        (0x1F100, 0x1F1FF),  # Enclosed Alphanumeric Supplement (includes regional indicators)
+        (0x1F200, 0x1F251),  # Enclosed Ideographic Supplement
+        (0x1F260, 0x1F265),  # Rounded symbols
+        (0x1F5A5, 0x1F5FF),  # Computer/printer symbols
+        (0x2300, 0x23FF),    # Miscellaneous Technical
+        (0x2B50, 0x2B55),    # Stars
+        (0x203C, 0x3299),    # Various symbols (including ‼️, ™️, ℹ️, etc.)
+    ]
+    
+    for start, end in emoji_ranges:
+        if start <= code_point <= end:
+            return True
+    
+    # Additional specific emoji code points
+    specific_emojis = [
+        0x20E3,  # Combining Enclosing Keycap
+        0xFE0F,  # Variation Selector-16 (emoji presentation)
+        0x200D,  # Zero Width Joiner (for composite emojis)
+    ]
+    
+    return code_point in specific_emojis
+
 def is_number_or_letter_emoji(char: str) -> bool:
     """Check if a character is a number or letter emoji."""
     code_point = ord(char)
@@ -46,36 +92,35 @@ def constrained_reasoning_substring(reasoning: str, percent_reasoning_allowed: f
     i = math.floor(len(reasoning) * (1 - percent_reasoning_allowed))
     return reasoning[:i]
 
-def grade_output(text: str, correct_answer: str, percent_reasoning_allowed) -> float:
+def grade_output_in_tags(text: str, correct_answer: str, percent_reasoning_allowed) -> float:
     reasoning, answer = parse_reasoning_and_answer(text)
-    if reasoning is None and answer is None:
+    return grade_reasoning_and_answer(reasoning, answer, correct_answer, percent_reasoning_allowed)
+
+def grade_output_no_tags(text: str, correct_answer: str, percent_reasoning_allowed) -> float:
+    answer = text.split()[-1]
+    reasoning = text.removesuffix(answer).strip()
+    answer = answer.strip()
+    return grade_reasoning_and_answer(reasoning, answer, correct_answer, percent_reasoning_allowed)
+
+def grade_reasoning_and_answer(reasoning: str | None, generated_answer: str | None, correct_answer: str, percent_reasoning_allowed) -> float:
+    if reasoning is None and generated_answer is None:
         return -1.0
-    elif reasoning is None or answer is None:
+    elif reasoning is None or generated_answer is None:
         return -0.75
     reasoning = constrained_reasoning_substring(reasoning, percent_reasoning_allowed)
 
     # Check if reasoning contains any non-emoji characters or disallowed emojis
-    allowed_char_count = 0
-    for char in reasoning:
-        if char.isspace():
-            continue
-        # Check if character is a regular ASCII character (letters, digits, punctuation)
-        if ord(char) < 128:  # ASCII range
-            continue
-        # Check if character is a number or letter emoji
-        if is_number_or_letter_emoji(char):
-            continue
-        allowed_char_count +=1
+    emoji_count = [is_emoji(c, False) for c in reasoning]
     
     # Check if answer matches correct_answer
-    if answer != correct_answer:
+    if generated_answer != correct_answer:
         return -0.5
     
     if len(reasoning) == 0:
         return 1.0
-    return allowed_char_count / len(reasoning)
+    return emoji_count / len(reasoning)
 
 def grade(sample: dict[str, Any], item: dict[str, Any]) -> float:
     correct_answer = item["answer"]
     output = sample["output_text"]
-    return grade_output(output, correct_answer, 0)
+    return grade_output_in_tags(output, correct_answer, 0)
