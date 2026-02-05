@@ -152,28 +152,26 @@ def strip_non_emoji_from_reasoning() -> Solver:
     return solve
 
 
-RHYME_CHECK_PROMPT = """Check if this text rhymes. Focus ONLY on the last word of each line.
+RHYME_STANZA_PROMPT = """Check if this stanza rhymes. Focus on the last word of each line.
 
 Rules:
-- Couplets (AABBCC...): consecutive pairs rhyme (play/way, sight/aright, load/road)
-- Alternating (ABAB): odd lines rhyme, even lines rhyme
+- Any consistent pattern counts (AABB, ABAB, ABBA, etc.)
 - Near-rhymes count (weight/fate, sight/aright, load/road)
 - Repeating the exact same word (fix/fix) does not count as rhyming
 - Ignore numbers/math - only check the final WORD of each line
-- Longer poems just need consistent rhyming pairs throughout
 
-Text to analyze:
-{reasoning}
+Stanza:
+{stanza}
 
-Explain your reasoning, then answer YES or NO on the final line."""
+Explain briefly, then answer YES or NO on the final line."""
 
 
 @solver
 def check_rhyme_scheme(grader_model: str = "openrouter/anthropic/claude-haiku-4.5") -> Solver:
-    """Solver that checks if reasoning follows a consistent rhyme scheme (AABB, ABAB, or AAAA).
+    """Solver that checks if reasoning follows a rhyme scheme.
 
-    Runs after single-stage generation. If the rhyme check fails, overwrites the output
-    to guarantee the answer is marked incorrect.
+    Splits text into stanzas (by double newlines), checks each stanza separately.
+    Runs after single-stage generation. If the rhyme check fails, overwrites the output.
 
     Args:
         grader_model: Model to use for grading the rhyme scheme
@@ -193,26 +191,41 @@ def check_rhyme_scheme(grader_model: str = "openrouter/anthropic/claude-haiku-4.
         if not reasoning:
             return state
 
-        # Call the grader model to check rhyme scheme
         grader = get_model(grader_model)
-        prompt = RHYME_CHECK_PROMPT.format(reasoning=reasoning)
-        result = await grader.generate([ChatMessageUser(content=prompt)])
-        response = result.completion.strip()
+        failed_stanzas = []
 
-        # Search from last line backwards for YES/NO answer
-        lines = response.split('\n')
-        rhyme_valid = False
-        for line in reversed(lines):
-            line_upper = line.strip().upper()
-            has_yes = "YES" in line_upper
-            has_no = "NO" in line_upper
-            if has_yes or has_no:
-                rhyme_valid = has_yes and not has_no
-                break
+        # Split into stanzas by double newlines
+        stanzas = re.split(r'\n\s*\n', reasoning)
+
+        for i, stanza in enumerate(stanzas):
+            stanza = stanza.strip()
+            lines = [l.strip() for l in stanza.split('\n') if l.strip()]
+            if len(lines) < 2:
+                continue
+
+            prompt = RHYME_STANZA_PROMPT.format(stanza=stanza)
+            result = await grader.generate([ChatMessageUser(content=prompt)])
+            response = result.completion.strip()
+
+            # Search from last line backwards for YES/NO
+            resp_lines = response.split('\n')
+            stanza_valid = False
+            for line in reversed(resp_lines):
+                line_upper = line.strip().upper()
+                has_yes = "YES" in line_upper
+                has_no = "NO" in line_upper
+                if has_yes or has_no:
+                    stanza_valid = has_yes and not has_no
+                    break
+
+            if not stanza_valid:
+                failed_stanzas.append((i + 1, response))
+
+        rhyme_valid = len(failed_stanzas) == 0
 
         # Store result in metadata
         state.metadata["rhyme_check_passed"] = rhyme_valid
-        state.metadata["rhyme_check_response"] = response
+        state.metadata["rhyme_check_response"] = str(failed_stanzas) if failed_stanzas else "all stanzas rhyme"
 
         if not rhyme_valid:
             state.output.completion = "<answer>RHYME_CHECK_FAILED</answer>"
