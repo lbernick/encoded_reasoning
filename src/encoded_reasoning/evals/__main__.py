@@ -68,7 +68,7 @@ def main():
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=int(os.environ.get("MAX_TOKENS", 256)),
+        default=int(os.environ.get("MAX_TOKENS", 1024)),
         help="Maximum tokens for model generation",
     )
     parser.add_argument(

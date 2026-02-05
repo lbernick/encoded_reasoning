@@ -17,9 +17,9 @@ from pathlib import Path
 # Configuration
 MODEL = "openrouter/openai/gpt-5.2"
 MODEL_SHORT = "gpt52"
-SAMPLES = 100
-DATASET = "morehopqa"
-MAX_TOKENS = 512
+SAMPLES = 2
+DATASET = "genarithmetic"
+MAX_TOKENS = 1024
 LOG_DIR = "gpt52"
 
 # Constraints to test
