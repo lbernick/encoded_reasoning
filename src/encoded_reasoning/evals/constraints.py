@@ -42,6 +42,10 @@ def percentage_emojis(reasoning: str) -> float:
     emojis = EMOJI_PATTERN.findall(reasoning)
     return len(emojis) / len(reasoning)
 
+def length_penalty(reasoning: str) -> float:
+    length_cap = 1000
+    return 1 - min(len(reasoning), length_cap) / length_cap
+
 def percentage_numerical(reasoning: str) -> float:
     """Return the fraction of characters that are digits or whitespace."""
     if not reasoning:
@@ -102,6 +106,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         system_prompt="Think through this step-by-step.",
         expects_reasoning=True,
         reasoning_example="Step-by-step work here...",
+        reward_function=lambda r: 1.0,
     ),
     "no_cot": ReasoningConstraint(
         name="no_cot",
@@ -111,6 +116,14 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
             "Do NOT show any reasoning, steps, or explanation. "
         ),
         expects_reasoning=False,
+    ),
+    "length_penalty": ReasoningConstraint(
+        name="length penalty",
+        description="Standard chain-of-thought reasoning with a penalty on total reasoning length",
+        system_prompt="Think through this step-by-step.",
+        expects_reasoning=True,
+        reasoning_example="Step-by-step work here...",
+        reward_function=length_penalty,
     ),
     "only_emojis": ReasoningConstraint(
         name="only_emojis",
