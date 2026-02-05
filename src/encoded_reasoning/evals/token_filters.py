@@ -103,6 +103,11 @@ def length_4_word_token_filter(tokenizer) -> set[int]:
     return short_word_token_filter(tokenizer, max_chars=4)
 
 
+def length_5_word_token_filter(tokenizer) -> set[int]:
+    """Return token IDs that decode to words of at most 5 letters."""
+    return short_word_token_filter(tokenizer, max_chars=5)
+
+
 def common_words_token_filter(tokenizer, common_words: set[str]) -> set[int]:
     """Return token IDs that decode to words in the common_words set."""
     return {

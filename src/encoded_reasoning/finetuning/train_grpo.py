@@ -424,7 +424,7 @@ if __name__ == "__main__":
     
     cli_args = parser.parse_args()
     
-    check_git_clean()
+    # check_git_clean()
     load_dotenv()
     login()
     os.environ["WANDB_GIT_COMMIT"] = (

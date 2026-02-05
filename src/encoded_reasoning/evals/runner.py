@@ -300,6 +300,7 @@ def run_eval(
     use_logit_mask: bool = False,
     log_dir: str | None = None,
     reasoning_effort: str | None = None,
+    max_connections: int | None = None
 ):
     """Run an evaluation with a specified constraint.
 
@@ -319,6 +320,7 @@ def run_eval(
                          reasoning before generating the final answer
         name: Name for eval run. Defaults to '{constraint}_{dataset}'
         reasoning_effort: the reasoning effort option for OpenAI models. Defaults to None. Can be set to strings 'none' 'low' 'medium' 'high' 'xhigh'
+        max_connections: number of API calls to simultaneously make. Defaults to None, which Inspect defaults as 10.
 
     Returns:
         Inspect eval results
@@ -339,13 +341,15 @@ def run_eval(
         model, constraint_name, use_logit_mask, force_answer_prefix=force_answer_prefix
     )
 
-    eval_kwargs: dict = {
-        "model": resolved_model,
-        "limit": n_samples,
-        "max_tokens": max_tokens,
-        "reasoning_effort": reasoning_effort,
-        "log_dir": str(log_dir) if log_dir is not None else str(LOG_DIR),
-        "metadata": {
+    results = inspect_eval(
+        task,
+        model=resolved_model,
+        limit=n_samples,
+        max_tokens=max_tokens,
+        reasoning_effort=reasoning_effort,
+        max_connections=max_connections,
+        log_dir=str(log_dir) if log_dir is not None else str(LOG_DIR),
+        metadata={
             "constraint": constraint_name,
             "dataset": dataset_name,
             "seed": seed,

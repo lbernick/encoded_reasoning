@@ -129,6 +129,12 @@ def main():
         default=None,
         help="Reasoning effort for OpenAI models. Defaults to None. Can be set to values 'none' 'low' 'medium' 'high' 'xhigh'",
     )
+    parser.add_argument(
+        "--max-connections",
+        type=int,
+        default=None,
+        help="Max number of simultaneous API calls to make. Default is none, which Inspect defaults as 10."
+    )
 
     args = parser.parse_args()
 
@@ -181,6 +187,7 @@ def main():
     print(f"  Seed:       {args.seed}")
     if args.reasoning_effort:
         print(f"Reasoning Effort: {args.reasoning_effort}")
+    print(f"Max Connections: {args.max_connections}")
     print()
 
     results = run_eval(
@@ -200,6 +207,7 @@ def main():
         use_logit_mask=args.use_logit_mask,
         log_dir=args.log_dir,
         reasoning_effort=args.reasoning_effort,
+        max_connections=args.max_connections,
     )
 
     return results
