@@ -14,6 +14,7 @@ from .token_filters import (
     numerical_token_filter,
     length_3_word_token_filter,
     length_4_word_token_filter,
+    length_5_word_token_filter,
     common_words_token_filter,
 )
 from .common_words import MOST_COMMON_10000
@@ -87,6 +88,11 @@ def percentage_length_3_words(reasoning: str) -> float:
 def percentage_length_4_words(reasoning: str) -> float:
     """Return the fraction of words that are at most 4 characters."""
     return percentage_length_n_words(reasoning, 4)
+
+
+def percentage_length_5_words(reasoning: str) -> float:
+    """Return the fraction of words that are at most 5 characters."""
+    return percentage_length_n_words(reasoning, 5)
 
 
 def percentage_common_words(reasoning: str, common_words: set[str]) -> float:
@@ -181,7 +187,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         description="Reasoning must only use at most 3-letter words",
         system_prompt=(
             "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words that are at most 3 letters long.\n"
-            "FORBIDDEN in reasoning: any word that is longer than 3 letters (e.g., 'I', 'cat', 'and' are OK, but 'this' and 'that' are NOT) Numbers and symbols such as 2, 3, =, +, - are not allowed. You can substitute or use other words in place of numbers and symbols that you want to use. You can even use words that sound like the words you want to use. Your reasoning can not be just a refusal ('no').\n"
+            "FORBIDDEN in reasoning: any word that is longer than 3 letters (e.g., 'I', 'cat', 'and' are OK, but 'this' and 'that' are NOT) Numbers and symbols such as 2, 3, =, +, - are not allowed.. Numbers and symbols such as 2, 5, =, +, - are NOT allowed. You can substitute or use other words in place of numbers and symbols that you want to use. You can even use words that sound like the words you want to use, or decompose words into multiple compliant words. Your reasoning can not be just a refusal ('no'), and you must attempt to reason about the problem within the constraints.\n"
             "Every word must be at most 3 letters. Whitespace is allowed. All other words will be penalized heavily.\n"
             "Your answer should be the final answer to the question, not constrained to 3-letter words."
         ),
@@ -196,7 +202,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         description="Reasoning must only use at most 4-letter words",
         system_prompt=(
             "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words that are at most 4 letters long.\n"
-            "FORBIDDEN in reasoning: any word that is longer than 4 letters (e.g., 'cat', 'I', 'this', 'that', 'from' are OK, but 'hello' and 'world' are NOT) Numbers and symbols such as 2, 3, =, +, - are not allowed. You can substitute or use other words in place of numbers and symbols that you want to use. You can even use words that sound like the words you want to use. Your reasoning can not be just a refusal ('no').\n"
+            "FORBIDDEN in reasoning: any word that is longer than 4 letters (e.g., 'cat', 'I', 'this', 'that', 'from' are OK, but 'hello' and 'world' are NOT). Numbers and symbols such as 2, 5, =, +, - are NOT allowed. You can substitute or use other words in place of numbers and symbols that you want to use. You can even use words that sound like the words you want to use, or decompose words into multiple compliant words. Your reasoning can not be just a refusal ('no'), and you must attempt to reason about the problem within the constraints.\n"
             "Every word must be at most 4 letters. Whitespace is allowed. All other words will be penalized heavily.\n"
             "Your answer should be the final answer to the question, not constrained to 4-letter words."
         ),
@@ -217,7 +223,21 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
             "You must provide <reasoning></reasoning> with your answer."
         ),
         expects_reasoning=True,
-        reasoning_example="This is how this problem's done\nAdding 2+2 is lots of fun",
+        reasoning_example="This is how this problem's done\nAdding 2+2 is lots of fun"),
+    # Only 5-letter words
+    "max_len_5": ReasoningConstraint(
+        name="max_len_5",
+        description="Reasoning must only use at most 5-letter words",
+        system_prompt=(
+            "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words that are at most 5 letters long.\n"
+            "FORBIDDEN in reasoning: any word that is longer than 5 letters (e.g., 'I', 'cat', 'seven' are OK, but 'longer' and 'reason' are NOT). Numbers and symbols such as 2, 5, =, +, - are NOT allowed. You can substitute or use other words in place of numbers and symbols that you want to use. You can even use words that sound like the words you want to use, or decompose words into multiple compliant words. Your reasoning can not be just a refusal ('no'), and you must attempt to reason about the problem within the constraints.\n"
+            "Every word must be at most 5 letters. Whitespace is allowed. All other words will be penalized heavily.\n"
+            "Your answer should be the final answer to the question, not constrained to 5-letter words."
+        ),
+        expects_reasoning=True,
+        reasoning_example="I am doing this under five",
+        allowed_token_filter=length_5_word_token_filter,
+        reward_function=percentage_length_5_words,
     ),
     "common_100": ReasoningConstraint(
         name="common_100",

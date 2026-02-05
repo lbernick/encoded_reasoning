@@ -1,0 +1,7 @@
+Model,Dataset,Subset,Prompt,Constraint,Unfiltered prop correct,Standard error,Prop. filtered out,eval file
+openrouter/openai/gpt-5.2,gen-arithmetic,200,,unconstrained,0.765,0.030,,2026-02-05T16-27-39+00-00_unconstrained-gen-arithmetic-gpt-5.2_BGzeVjeEHmho7L3gzdornR.eval
+openrouter/openai/gpt-5.2,gen-arithmetic,200,,no_cot,0.165,0.026,,2026-02-05T16-28-57+00-00_no-cot-gen-arithmetic-gpt-5.2_dYbyvsudMHWrpcb8Up8CEx.eval
+openrouter/openai/gpt-5.2,gen-arithmetic,200,,max_len_5,0.330,0.033,,2026-02-05T16-29-28+00-00_max-len-5-gen-arithmetic-gpt-5.2_kU6WRhpFFXLHUUWqvAXaJF.eval
+openrouter/openai/gpt-5.2,gen-arithmetic,200,,max_len_4,0.325,0.033,,2026-02-05T16-30-01+00-00_max-len-4-gen-arithmetic-gpt-5.2_4H3KhEbGm4rqtWPSaPQBWA.eval
+openrouter/openai/gpt-5.2,gen-arithmetic,200,,max_len_3,0.230,0.030,,2026-02-05T16-32-47+00-00_max-len-3-gen-arithmetic-gpt-5.2_9yxR8FkohW28bBKr5z6YQV.eval
+openrouter/openai/gpt-5.2,gen-arithmetic,200,,common_100,0.155,0.026,,2026-02-05T16-34-18+00-00_common-100-gen-arithmetic-gpt-5.2_NkfW77kZCBgDziLvTpfahc.eval
