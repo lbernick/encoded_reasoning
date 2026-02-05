@@ -6,17 +6,18 @@ HuggingFace model and an emoji constraint, verifying that logit masking is
 active end-to-end.
 
 Usage:
-    python -m logit_masking.test_integration
-    python -m logit_masking.test_integration --model meta-llama/Llama-3.2-1B-Instruct
-    python -m logit_masking.test_integration --constraint only_emojis --dataset gsm8k -n 2
+    python -m encoded_reasoning.logit_masking.test_integration
+    python -m encoded_reasoning.logit_masking.test_integration --model meta-llama/Llama-3.2-1B-Instruct
+    python -m encoded_reasoning.logit_masking.test_integration --constraint only_emojis --dataset gsm8k -n 2
 """
 
 import argparse
 
-from evals.runner import run_eval, BASE_SYSTEM_PROMPT_COT, BASE_SYSTEM_PROMPT_NO_COT
-from evals.constraints import CONSTRAINTS, get_constraint, register_constraint, ReasoningConstraint
-from evals.datasets import DATASETS
-from evals.token_filters import (
+from encoded_reasoning.evals.runner import run_eval
+from encoded_reasoning.evals.constraints import CONSTRAINTS, get_constraint, register_constraint, ReasoningConstraint
+from encoded_reasoning.evals.datasets import DATASETS, get_dataset_type
+from encoded_reasoning.evals.prompts import get_base_system_prompt
+from encoded_reasoning.evals.token_filters import (
     logic_symbol_token_filter,
     number_token_filter,
     punctuation_token_filter,
@@ -92,6 +93,13 @@ def main():
         type=int,
         default=2,
     )
+
+    parser.add_argument(
+        "--use-logit-mask",
+        type=bool,
+        default=True,
+    )
+
     parser.add_argument(
         "--force-answer-prefix",
         type=bool,
@@ -102,11 +110,8 @@ def main():
 
     model = f"hf/{args.model}"
     constraint = ALL_CONSTRAINTS[args.constraint]
-    base_prompt = (
-        BASE_SYSTEM_PROMPT_COT
-        if constraint.expects_reasoning
-        else BASE_SYSTEM_PROMPT_NO_COT
-    )
+    dataset_type = get_dataset_type(args.dataset)
+    base_prompt = get_base_system_prompt(constraint.expects_reasoning, dataset_type)
     full_prompt = base_prompt + "\n" + constraint.system_prompt
     name = f"test_integration_{args.constraint}_{args.dataset}"
 
@@ -126,6 +131,7 @@ def main():
         n_samples=args.n_samples,
         name=name,
         max_tokens=args.max_tokens,
+        use_logit_mask=args.use_logit_mask
     )
 
     for log in results:

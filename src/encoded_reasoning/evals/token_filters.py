@@ -47,12 +47,13 @@ def logic_symbol_token_filter(tokenizer) -> set[int]:
 
 
 def short_word_token_filter(tokenizer, max_chars: int = 3) -> set[int]:
-    """Return token IDs that decode to words of at most max_chars characters."""
+    """Return token IDs that decode to short alphabetic words only (no numbers or symbols)."""
+    pattern = regex.compile(r'^[a-zA-Z]+$')
     return {
         tok_id for tok, tok_id in tokenizer.get_vocab().items()
         if (decoded := tokenizer.decode([tok_id]).strip())
         and len(decoded) <= max_chars
-        and decoded.isalpha()
+        and pattern.match(decoded)
     } | whitespace_token_filter(tokenizer)
 
 
@@ -87,16 +88,16 @@ def exact_length_word_token_filter(tokenizer, length: int) -> set[int]:
     return {
         tok_id for tok, tok_id in tokenizer.get_vocab().items()
         if (decoded := tokenizer.decode([tok_id]).strip())
-        and len(decoded) <= length
+        and len(decoded) == length
         and decoded.isalpha()
     } | whitespace_token_filter(tokenizer)
 
 
 def length_3_word_token_filter(tokenizer) -> set[int]:
-    """Return token IDs that decode to 3-letter or less words or whitespace."""
+    """Return token IDs that decode to exactly 3-letter whitespace."""
     return exact_length_word_token_filter(tokenizer, 3)
 
 
 def length_4_word_token_filter(tokenizer) -> set[int]:
-    """Return token IDs that decode to 4-letter or less words or whitespace."""
+    """Return token IDs that decode to exactly 4-letter whitespace."""
     return exact_length_word_token_filter(tokenizer, 4)
