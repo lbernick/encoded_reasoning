@@ -90,7 +90,7 @@ class Trainer:
     def __init__(self, args: FinetuningArgs):
         model_name = args.model_name.split("/")[-1]
         if not args.wandb_project:
-            args.wandb_project = f"{model_name}-{args.dataset_name}-grpo"
+            args.wandb_project = f"{model_name}-{args.dataset_name}-{args.constraint}-grpo"
         if not args.wandb_run_name:
             args.wandb_run_name = (
                 f"{model_name}-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
