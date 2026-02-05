@@ -16,6 +16,7 @@ Usage:
 import argparse
 import os
 
+from inspect_ai import eval_retry
 from .runner import run_eval
 from .datasets import DATASETS
 from .constraints import CONSTRAINTS
@@ -129,8 +130,21 @@ def main():
         default=None,
         help="Reasoning effort for OpenAI models. Defaults to None. Can be set to values 'none' 'low' 'medium' 'high' 'xhigh'",
     )
+    parser.add_argument(
+        "--retry",
+        type=str,
+        default=os.environ.get("RETRY_LOG"),
+        help="Path to a log file to retry. Resumes incomplete samples from a crashed eval.",
+    )
 
     args = parser.parse_args()
+
+    # Handle retry mode
+    if args.retry:
+        print(f"Retrying eval from: {args.retry}")
+        print(f"  Max Tokens: {args.max_tokens}")
+        results = eval_retry(args.retry, max_tokens=args.max_tokens)
+        return results
 
     # Validate: single-stage requires constraint
     if not args.two_stage and not args.constraint:
