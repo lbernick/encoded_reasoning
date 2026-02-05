@@ -1,3 +1,4 @@
+import argparse
 import os
 import subprocess
 import sys
@@ -32,7 +33,7 @@ from ..evals.prompts import get_base_system_prompt, get_example
 
 @dataclass
 class FinetuningArgs:
-    model_name: str = "Qwen/Qwen2.5-14B-Instruct"
+    model_name: str = "Qwen/Qwen2.5-7B-Instruct"
     dataset_name: str = "gsm8k"
     constraint: str = "only_emojis"
     use_curriculum_learning: bool = False
@@ -95,7 +96,7 @@ class Trainer:
                 f"{model_name}-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             )
         if not args.output_dir:
-            args.output_dir = f"./outputs/grpo_{args.dataset_name}"
+            args.output_dir = f"./outputs/{args.wandb_project}"
 
         self.args = args
         self.dataset_recipe = DATASETS[args.dataset_name]
@@ -361,14 +362,15 @@ class Trainer:
         print("\nStarting training...")
         try:
             trainer.train()
-
-            print(f"\nSaving model to {self.args.output_dir}")
-            trainer.save_model(self.args.output_dir)
-            trainer.push_to_hub(
-                commit_message=self.args.wandb_run_name,
-            )
         finally:
-            wandb.finish()
+            try:
+                print(f"\nSaving model to {self.args.output_dir}")
+                trainer.save_model(self.args.output_dir)
+                trainer.push_to_hub(
+                    commit_message=self.args.wandb_run_name,
+                )
+            finally:
+                wandb.finish()
 
         print("\n" + "=" * 80)
         print("TRAINING COMPLETE")
@@ -393,12 +395,46 @@ def check_git_clean():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train a model using GRPO")
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default="Qwen/Qwen2.5-7B-Instruct",
+        help="Model name or path (default: Qwen/Qwen2.5-7B-Instruct)",
+    )
+    parser.add_argument(
+        "--dataset_name",
+        type=str,
+        default="gsm8k",
+        help="Dataset name (default: gsm8k)",
+    )
+    parser.add_argument(
+        "--constraint",
+        type=str,
+        default="only_emojis",
+        help="Constraint type (default: only_emojis)",
+    )
+    parser.add_argument(
+        "--max_steps",
+        type=int,
+        default=-1,
+        help="Maximum training steps, -1 for unlimited (default: -1)",
+    )
+    
+    cli_args = parser.parse_args()
+    
     check_git_clean()
     load_dotenv()
     login()
     os.environ["WANDB_GIT_COMMIT"] = (
         subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("ascii").strip()
     )
-    args = FinetuningArgs()
+    
+    args = FinetuningArgs(
+        model_name=cli_args.model_name,
+        dataset_name=cli_args.dataset_name,
+        constraint=cli_args.constraint,
+        max_steps=cli_args.max_steps,
+    )
     trainer = Trainer(args)
     trainer.train()

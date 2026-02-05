@@ -1,8 +1,6 @@
-- Parse training args from CLI
 - Try out different generation_batch_size to speed up training
 - Try out evals before and after
 - Hyperparameter sweeps?
-- Try relaxing prompt constraint
 - Is it possible to save the model when reward hits a new max? How do you download from checkpoints?
 - Make sure wandb logging is set up correctly
 
