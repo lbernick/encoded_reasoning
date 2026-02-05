@@ -219,7 +219,7 @@ def check_rhyme_scheme(grader_model: str = "openrouter/anthropic/claude-haiku-4.
                 continue
 
             words_str = ", ".join(last_words)
-            prompt = RHYME_STANZA_PROMPT.format(words=words_str)
+            prompt = RHYME_STANZA_PROMPT.format(stanza=stanza, words=words_str)
             result = await grader.generate([ChatMessageUser(content=prompt)])
             response = result.completion.strip()
 
