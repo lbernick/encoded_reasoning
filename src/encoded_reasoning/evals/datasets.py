@@ -483,6 +483,7 @@ DATASETS: dict[str, DatasetRecipe] = {
         "hf_path": "google/boolq",
         "train_split": "train", 
         "test_split": "validation",
+        "config": "default",
         "record_to_sample": boolq_record_to_sample,
         "format_func": boolq_format_func,
         "scorer": boolq_scorer,
