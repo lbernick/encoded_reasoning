@@ -152,25 +152,33 @@ def strip_non_emoji_from_reasoning() -> Solver:
     return solve
 
 
-RHYME_STANZA_PROMPT = """Check if this stanza rhymes. Focus on the last word of each line.
-
-Rules:
-- Any consistent pattern counts (AABB, ABAB, ABBA, etc.)
-- Near-rhymes count (weight/fate, sight/aright, load/road)
-- Repeating the exact same word (fix/fix) does not count as rhyming
-- Ignore numbers/math - only check the final WORD of each line
+RHYME_STANZA_PROMPT = """Check if this stanza rhymes.
 
 Stanza:
 {stanza}
 
+The line-ending words are: {words}
+
+Rules:
+- Any consistent pattern counts (AABB, ABAB, ABBA, etc.)
+- Near-rhymes count (floor/for, weight/fate, sight/aright)
+- The same word repeated (fix/fix) does not count as rhyming
+
 Explain briefly, then answer YES or NO on the final line."""
+
+
+def extract_last_word(line: str) -> str | None:
+    """Extract the last alphabetic word from a line."""
+    import re
+    match = re.search(r'([a-zA-Z]+)[^a-zA-Z]*$', line.strip())
+    return match.group(1).lower() if match else None
 
 
 @solver
 def check_rhyme_scheme(grader_model: str = "openrouter/anthropic/claude-haiku-4.5") -> Solver:
     """Solver that checks if reasoning follows a rhyme scheme.
 
-    Splits text into stanzas (by double newlines), checks each stanza separately.
+    Splits text into stanzas (by double newlines), extracts last words, checks each stanza.
     Runs after single-stage generation. If the rhyme check fails, overwrites the output.
 
     Args:
@@ -203,7 +211,15 @@ def check_rhyme_scheme(grader_model: str = "openrouter/anthropic/claude-haiku-4.
             if len(lines) < 2:
                 continue
 
-            prompt = RHYME_STANZA_PROMPT.format(stanza=stanza)
+            # Extract last word from each line
+            last_words = [extract_last_word(line) for line in lines]
+            last_words = [w for w in last_words if w]  # filter None
+
+            if len(last_words) < 2:
+                continue
+
+            words_str = ", ".join(last_words)
+            prompt = RHYME_STANZA_PROMPT.format(words=words_str)
             result = await grader.generate([ChatMessageUser(content=prompt)])
             response = result.completion.strip()
 
@@ -219,7 +235,7 @@ def check_rhyme_scheme(grader_model: str = "openrouter/anthropic/claude-haiku-4.
                     break
 
             if not stanza_valid:
-                failed_stanzas.append((i + 1, response))
+                failed_stanzas.append((i + 1, last_words, response))
 
         rhyme_valid = len(failed_stanzas) == 0
 
