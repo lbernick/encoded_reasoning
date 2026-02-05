@@ -47,12 +47,14 @@ def logic_symbol_token_filter(tokenizer) -> set[int]:
 
 
 def short_word_token_filter(tokenizer, max_chars: int = 3) -> set[int]:
-    """Return token IDs that decode to words of at most max_chars characters."""
+    """Return token IDs that decode to short alphabetic words only (no numbers or symbols)."""
+    # Only allow pure letter sequences (a-z, A-Z) up to max_chars
+    pattern = regex.compile(r'^[a-zA-Z]+$')
     return {
         tok_id for tok, tok_id in tokenizer.get_vocab().items()
         if (decoded := tokenizer.decode([tok_id]).strip())
         and len(decoded) <= max_chars
-        and decoded.isalpha()
+        and pattern.match(decoded)
     } | whitespace_token_filter(tokenizer)
 
 
