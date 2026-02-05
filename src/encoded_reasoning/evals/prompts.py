@@ -10,6 +10,8 @@ def get_base_system_prompt(reasoning: bool, dataset_type: DatasetType) -> str:
         prompt += "Your answer should be a single number."
     elif dataset_type == DatasetType.MCQ:
         prompt += f"Your answer should be exactly one of the following letters: {ANSWER_LETTERS}"
+    elif dataset_type == DatasetType.BOOL:
+        prompt += f"Your answer should be either True or False (case insensitive)."
 
     return prompt
 
@@ -26,6 +28,8 @@ def get_example(reasoning_example: str, dataset_type: DatasetType) -> str:
         example += "<answer>B</answer>"
     elif dataset_type == DatasetType.FREE_RESPONSE:
         example += "<answer>John</answer>"
+    elif dataset_type == DatasetType.BOOL:
+        example += "<answer>True</answer>"
 
     return example
 
@@ -46,5 +50,7 @@ def get_base_answer_with_reasoning_system_prompt(dataset_type: DatasetType) -> s
         example = "<answer>B</answer>"
     elif dataset_type == DatasetType.FREE_RESPONSE:
         example = "<answer>John</answer>"
+    elif dataset_type == DatasetType.BOOL:
+        example = "<answer>True</answer>"
 
     return prompt + example

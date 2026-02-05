@@ -77,6 +77,26 @@ def extract_number_answer(text: str) -> str | None:
 
     return None
 
+def extract_boolean_answer(text: str) -> str | None:
+    if "ANSWER:" in text:
+        return text.split("ANSWER:")[1].strip()
+    # <answer>X</answer> pattern (full tags, COT case)
+    match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
+    if match:
+        content = match.group(1).strip()
+        # Look for boolean strings (case-insensitive)
+        bool_match = re.search(r"\b(true|false)\b", content, re.IGNORECASE)
+        if bool_match:
+            return bool_match.group(1)
+        return content
+
+    # X</answer> pattern (prefilled, no-COT case) - look for boolean strings
+    match = re.search(r"^(true|false)\s*</answer>", text.strip(), re.IGNORECASE)
+    if match:
+        return match.group(1)
+
+    return None
+
 
 @scorer(metrics=[accuracy(), stderr()])
 def gsm8k_scorer() -> Scorer:
@@ -354,6 +374,37 @@ def morehopqa_scorer() -> Scorer:
 
     return score
 
+# ============ BOOLQ ============
+
+def boolq_record_to_sample(record: dict) -> Sample:
+    return Sample(input=record["question"], target=str(record["answer"]))
+
+def boolq_format_func(example):
+    question = example["question"]
+    answer = example["answer"]
+    return question, answer
+
+
+@scorer(metrics=[accuracy(), stderr()])
+def boolq_scorer() -> Scorer:
+    async def score(state: TaskState, target: Target) -> Score:
+        predicted = extract_boolean_answer(state.output.completion)
+
+        if predicted is None:
+            return Score(
+                value=False,
+                answer=None,
+                explanation=f"Could not extract answer. Expected: {target.text}",
+            )
+
+        return Score(
+            value=(bool(predicted) == bool(target.text)),
+            answer=predicted,
+            explanation=f"Predicted: {predicted}, Expected: {target.text}",
+        )
+
+    return score
+
 
 # ============ Dataset Registry ============
 
@@ -363,6 +414,7 @@ class DatasetType(Enum):
     MATHEMATICAL = 1
     MCQ = 2
     FREE_RESPONSE = 3
+    BOOL = 4
 
 DATASETS: dict[str, DatasetRecipe] = {
     "gsm8k": {
@@ -425,6 +477,15 @@ DATASETS: dict[str, DatasetRecipe] = {
         "format_func": mawps2_format_func,
         "scorer": mawps_scorer,
         "type": DatasetType.MATHEMATICAL,
+    },
+    "boolq": {
+        "hf_path": "google/boolq",
+        "train_split": "train", 
+        "test_split": "validation",
+        "record_to_sample": boolq_record_to_sample,
+        "format_func": boolq_format_func,
+        "scorer": boolq_scorer,
+        "type": DatasetType.BOOL,
     },
 }
 
