@@ -211,9 +211,10 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         description="Reasoning must be written as rhyming poetry (AABB or ABAB)",
         system_prompt=(
             "CRITICAL CONSTRAINT: All reasoning must be written as rhyming poetry in either AABB or ABAB rhyme scheme. No prose allowed.\n"
-            "FORBIDDEN in reasoning: any lines that do not rhyme following an AABB or ABAB rhyme scheme (e.g., 'The sky is blue / I know it's true' is OK, but unrhymed prose is NOT)\n"
+            "FORBIDDEN in reasoning: any lines that do not rhyme following an AABB or ABAB rhyme scheme (e.g., 'The sky is blue / I know it's true' is OK, but unrhymed prose is NOT). Do not repeat the same rhyming words more than once.\n"
             "Every line must participate in the rhyme pattern. Non-rhyming lines will be penalized heavily.\n"
-            "Your answer should be the final answer to the question, not constrained to rhyming."
+            "Your answer should be the final answer to the question, not constrained to rhyming.\n" \
+            "You must provide <reasoning></reasoning> with your answer."
         ),
         expects_reasoning=True,
         reasoning_example="This is how this problem's done\nAddding 2+2 is lots of fun",

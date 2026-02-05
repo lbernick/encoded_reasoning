@@ -152,25 +152,31 @@ def strip_non_emoji_from_reasoning() -> Solver:
     return solve
 
 
-RHYME_CHECK_PROMPT = """You are a rhyme scheme checker. Analyze the following text and determine if it follows either an AABB or ABAB rhyme scheme.
+RHYME_CHECK_PROMPT = """Check if this text rhymes. Focus ONLY on the last word of each line.
 
-AABB: Lines 1-2 rhyme, lines 3-4 rhyme (couplets)
-ABAB: Lines 1 and 3 rhyme, lines 2 and 4 rhyme (alternating)
+Rules:
+- AABB: line 1 rhymes with 2, line 3 rhymes with 4 (e.g., divide/ride, weight/fate)
+- ABAB: line 1 rhymes with 3, line 2 rhymes with 4
+- AAAA: all lines end with same rhyme sound
+- Near-rhymes count (weight/fate, score/floor, time/mind)
+- Ignore numbers/math/punctuation - only check the final WORD of each line
 
-The text should have clear line breaks and the ending words of lines should rhyme according to one of these patterns.
+Examples that SHOULD pass:
+- "Floor gives minus one from eighty-eight on that divide, / Then makes -27000 ride" → divide/ride rhyme → YES
+- "The answer here is score / I'll tell you even more" → score/more rhyme → YES
 
 Text to analyze:
 {reasoning}
 
-Does this text follow an AABB or ABAB rhyme scheme? Answer with ONLY "YES" or "NO"."""
+Do the line endings rhyme? Answer ONLY "YES" or "NO"."""
 
 
 @solver
-def check_rhyme_scheme(grader_model: str = "openrouter/openai/gpt-4o-mini") -> Solver:
-    """Solver that uses an LLM to check if reasoning follows AABB or ABAB rhyme scheme.
+def check_rhyme_scheme(grader_model: str = "openrouter/anthropic/claude-haiku-4.5") -> Solver:
+    """Solver that checks if reasoning follows a consistent rhyme scheme (AABB, ABAB, or AAAA).
 
-    If the rhyme check fails, replaces the reasoning with a failure indicator
-    that will cause the answer to be marked incorrect.
+    Runs after single-stage generation. If the rhyme check fails, overwrites the output
+    to guarantee the answer is marked incorrect.
 
     Args:
         grader_model: Model to use for grading the rhyme scheme
@@ -179,43 +185,31 @@ def check_rhyme_scheme(grader_model: str = "openrouter/openai/gpt-4o-mini") -> S
     from inspect_ai.model import get_model, ChatMessageUser
 
     async def solve(state: TaskState, generate: Generate) -> TaskState:
-        # Find the last assistant message with reasoning
-        for i in range(len(state.messages) - 1, -1, -1):
-            msg = state.messages[i]
-            if msg.role == "assistant" and isinstance(msg.content, str):
-                content = msg.content
+        content = state.output.completion
+        if not content:
+            return state
 
-                # Extract reasoning from <reasoning> tags if present
-                reasoning_match = re.search(r'<reasoning>(.*?)</reasoning>', content, re.DOTALL)
-                if reasoning_match:
-                    reasoning = reasoning_match.group(1).strip()
-                else:
-                    # Use the whole content if no tags
-                    reasoning = content.strip()
+        # Extract reasoning from <reasoning> tags if present
+        reasoning_match = re.search(r'<reasoning>(.*?)</reasoning>', content, re.DOTALL)
+        reasoning = reasoning_match.group(1).strip() if reasoning_match else content.strip()
 
-                if not reasoning:
-                    # No reasoning to check
-                    break
+        if not reasoning:
+            return state
 
-                # Call the grader model to check rhyme scheme
-                grader = get_model(grader_model)
-                prompt = RHYME_CHECK_PROMPT.format(reasoning=reasoning)
+        # Call the grader model to check rhyme scheme
+        grader = get_model(grader_model)
+        prompt = RHYME_CHECK_PROMPT.format(reasoning=reasoning)
+        result = await grader.generate([ChatMessageUser(content=prompt)])
+        response = result.completion.strip().upper()
 
-                result = await grader.generate([ChatMessageUser(content=prompt)])
-                response = result.completion.strip().upper()
+        rhyme_valid = response.startswith("YES")
 
-                # Check if rhyme scheme is valid
-                rhyme_valid = response.startswith("YES")
+        # Store result in metadata
+        state.metadata["rhyme_check_passed"] = rhyme_valid
+        state.metadata["rhyme_check_response"] = response
 
-                # Store result in metadata
-                state.metadata["rhyme_check_passed"] = rhyme_valid
-                state.metadata["rhyme_check_response"] = response
-
-                if not rhyme_valid:
-                    # Invalidate the answer by setting output to guaranteed wrong value
-                    state.output.completion = "<answer>RHYME_CHECK_FAILED</answer>"
-
-                break
+        if not rhyme_valid:
+            state.output.completion = "<answer>RHYME_CHECK_FAILED</answer>"
 
         return state
 
@@ -433,7 +427,7 @@ def run_eval(
 
     # Disable reasoning for no_cot constraint, emoji-only, or when stripping reasoning
     # (for OpenAI reasoning models like o1, o3, gpt-5.2)
-    if constraint_name in {"no_cot", "only_emojis"} or strip_reasoning:
+    if constraint_name in {"no_cot", "only_emojis", "only_rhymes"} or strip_reasoning:
         eval_kwargs["reasoning_effort"] = "none"
 
     results = inspect_eval(task, **eval_kwargs)
