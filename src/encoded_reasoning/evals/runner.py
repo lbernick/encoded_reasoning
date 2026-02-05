@@ -155,12 +155,12 @@ def strip_non_emoji_from_reasoning() -> Solver:
 RHYME_CHECK_PROMPT = """Check if this text rhymes. Focus ONLY on the last word of each line.
 
 Rules:
-- AABB: line 1 rhymes with 2, line 3 rhymes with 4 (e.g., divide/ride, weight/fate)
-- ABAB: line 1 rhymes with 3, line 2 rhymes with 4
-- AAAA: all lines end with same rhyme sound (e.g., score/more/floor/evermore)
-- Near-rhymes count (weight/fate, score/floor, time/mind)
-- Repeating the exact same word (fix/fix, alive/alive) does not count as rhyming
+- Couplets (AABBCC...): consecutive pairs rhyme (play/way, sight/aright, load/road)
+- Alternating (ABAB): odd lines rhyme, even lines rhyme
+- Near-rhymes count (weight/fate, sight/aright, load/road)
+- Repeating the exact same word (fix/fix) does not count as rhyming
 - Ignore numbers/math - only check the final WORD of each line
+- Longer poems just need consistent rhyming pairs throughout
 
 Text to analyze:
 {reasoning}
