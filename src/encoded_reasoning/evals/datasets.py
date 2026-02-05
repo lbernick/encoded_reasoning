@@ -414,6 +414,23 @@ def morehopqa_scorer() -> Scorer:
 
     return score
 
+# ============ HotpotQA =========
+
+def hotpotqa_record_to_sample(row: dict) -> Sample:
+    return Sample(
+        input=row["question"],
+        target=str(row["answer"]),
+        metadata={
+            "level": row.get("level", ""),
+            "type": row.get("type", ""),
+        },
+    )
+
+def filter_hotpotqa(example: Sample) -> bool:
+    if example.metadata["level"] == "hard":
+        return False
+    return True
+
 # ============ BOOLQ ============
 
 def boolq_record_to_sample(record: dict) -> Sample:
@@ -560,6 +577,18 @@ DATASETS: dict[str, DatasetRecipe] = {
         "scorer": boolq_scorer,
         "type": DatasetType.BOOL,
     },
+    "hotpotqa": {
+        "hf_path": "hotpotqa/hotpot_qa",
+        "train_split": "train", 
+        # Using the train split here because the test split only has hard questions,
+        # and I'm not planning on training on this
+        "test_split": "train", 
+        "hf_name": "distractor",
+        "record_to_sample": hotpotqa_record_to_sample,
+        "scorer": morehopqa_scorer,
+        "type": DatasetType.FREE_RESPONSE,
+        "filter_func": filter_hotpotqa,
+    },
 }
 
 
@@ -656,7 +685,7 @@ def load_dataset(
         return MemoryDataset(samples)
 
     # Standard HuggingFace dataset loading
-    return hf_dataset(
+    ds =  hf_dataset(
         recipe["hf_path"],
         name=recipe.get("hf_name"),
         split=split or recipe["test_split"],
@@ -664,6 +693,9 @@ def load_dataset(
         shuffle=shuffle,
         seed=seed,
     )
+    if "filter_func" in recipe:
+        ds = ds.filter(recipe["filter_func"])
+    return ds
 
 
 def get_scorer(name: str) -> Callable[[], Scorer]:
