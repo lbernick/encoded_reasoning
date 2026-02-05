@@ -87,7 +87,7 @@ def exact_length_word_token_filter(tokenizer, length: int) -> set[int]:
     return {
         tok_id for tok, tok_id in tokenizer.get_vocab().items()
         if (decoded := tokenizer.decode([tok_id]).strip())
-        and len(decoded) == length
+        and len(decoded) <= length
         and decoded.isalpha()
     } | whitespace_token_filter(tokenizer)
 

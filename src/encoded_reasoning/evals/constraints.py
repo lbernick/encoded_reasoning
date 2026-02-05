@@ -48,21 +48,17 @@ def length_penalty(reasoning: str) -> float:
 
 def percentage_numerical(reasoning: str) -> float:
     """Return the fraction of characters that are digits or whitespace."""
-    if not reasoning:
-        return 0.0
     numerical_chars = sum(1 for c in reasoning if c.isdigit() or c.isspace())
     return numerical_chars / len(reasoning)
 
 
 def percentage_length_n_words(reasoning: str, length: int) -> float:
     """Return the fraction of alphabetic words that are exactly `length` characters."""
-    if not reasoning:
-        return 0.0
     # Extract only alphabetic sequences as "words"
     words = regex.findall(r'[a-zA-Z]+', reasoning)
     if not words:
         return 0.0
-    correct_words = sum(1 for w in words if len(w) == length)
+    correct_words = sum(1 for w in words if len(w) <= length)
     return correct_words / len(words)
 
 
@@ -93,7 +89,7 @@ class ReasoningConstraint:
     # hard-enforce that only these tokens can appear inside <reasoning> tags.
     # When None, no logit masking is applied (soft enforcement via prompt only).
     allowed_token_filter: Callable | None = None
-    # A function that accepts a reasoning string and returns a float between 0 and 1
+    # A function that accepts a non-empty reasoning string and returns a float between 0 and 1
     reward_function: Callable | None = None
 
 
@@ -156,11 +152,11 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
     # Only 3-letter words
     "only_length_3": ReasoningConstraint(
         name="only_length_3",
-        description="Reasoning must only use exactly 3-letter words",
+        description="Reasoning must only use at most 3-letter words",
         system_prompt=(
-            "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words that are exactly 3 letters long.\n"
-            "FORBIDDEN in reasoning: any word that is not exactly 3 letters (e.g., 'the', 'cat', 'and' are OK, but 'a', 'to', 'I', 'this', 'that' are NOT)\n"
-            "Every word must be exactly 3 letters. Whitespace is allowed. All other words will be penalized heavily.\n"
+            "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words that are at most 3 letters long.\n"
+            "FORBIDDEN in reasoning: any word that is longer than 3 letters (e.g., 'I', 'cat', 'and' are OK, but 'this' and 'that' are NOT)\n"
+            "Every word must be at most 3 letters. Whitespace is allowed. All other words will be penalized heavily.\n"
             "Your answer should be the final answer to the question, not constrained to 3-letter words."
         ),
         expects_reasoning=True,
@@ -171,11 +167,11 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
     # Only 4-letter words
     "only_length_4": ReasoningConstraint(
         name="only_length_4",
-        description="Reasoning must only use exactly 4-letter words",
+        description="Reasoning must only use at most 4-letter words",
         system_prompt=(
-            "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words that are exactly 4 letters long.\n"
-            "FORBIDDEN in reasoning: any word that is not exactly 4 letters (e.g., 'this', 'that', 'from' are OK, but 'the', 'a', 'hello' are NOT)\n"
-            "Every word must be exactly 4 letters. Whitespace is allowed. All other words will be penalized heavily.\n"
+            "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words that are at most 4 letters long.\n"
+            "FORBIDDEN in reasoning: any word that is longer than 4 letters (e.g., 'cat', 'I', 'this', 'that', 'from' are OK, but 'hello' and 'world' are NOT)\n"
+            "Every word must be at most 4 letters. Whitespace is allowed. All other words will be penalized heavily.\n"
             "Your answer should be the final answer to the question, not constrained to 4-letter words."
         ),
         expects_reasoning=True,
