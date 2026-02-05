@@ -15,9 +15,10 @@ Usage:
 
 import argparse
 import os
+from pathlib import Path
 
 from inspect_ai import eval_retry
-from .runner import run_eval
+from .runner import run_eval, LOG_DIR
 from .datasets import DATASETS
 from .constraints import CONSTRAINTS
 
@@ -156,10 +157,17 @@ def main():
 
     # Handle retry mode
     if args.retry:
+        retry_path = Path(args.retry)
+        # If path doesn't exist, try looking in default log directory
+        if not retry_path.exists():
+            retry_path = LOG_DIR / args.retry
+        if not retry_path.exists():
+            parser.error(f"Log file not found: {args.retry} (also checked {LOG_DIR})")
+
         if args.max_tokens:
-            update_log_max_tokens(args.retry, args.max_tokens)
-        print(f"Retrying eval from: {args.retry}")
-        results = eval_retry(args.retry)
+            update_log_max_tokens(str(retry_path), args.max_tokens)
+        print(f"Retrying eval from: {retry_path}")
+        results = eval_retry(str(retry_path))
         return results
 
     # Validate: single-stage requires constraint
