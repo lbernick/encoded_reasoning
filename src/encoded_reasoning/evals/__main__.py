@@ -123,6 +123,12 @@ def main():
         default=None,
         help="Directory for eval logs. Defaults to project 'logs/'.",
     )
+    parser.add_argument(
+        "--reasoning-effort",
+        type=str,
+        default=None,
+        help="Reasoning effort for OpenAI models. Defaults to None. Can be set to values 'none' 'low' 'medium' 'high' 'xhigh'",
+    )
 
     args = parser.parse_args()
 
@@ -173,6 +179,8 @@ def main():
         print(f"  Repeat:     {args.repeat_input}")
         print(f"  Filler Tokens: {args.filler_tokens}")
     print(f"  Seed:       {args.seed}")
+    if args.reasoning_effort:
+        print(f"Reasoning Effort: {args.reasoning_effort}")
     print()
 
     results = run_eval(
@@ -191,6 +199,7 @@ def main():
         force_answer_prefix="\n<answer>" if args.force_answer_prefix else None,
         use_logit_mask=args.use_logit_mask,
         log_dir=args.log_dir,
+        reasoning_effort=args.reasoning_effort,
     )
 
     return results

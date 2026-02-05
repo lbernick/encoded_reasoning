@@ -90,7 +90,7 @@ class Trainer:
     def __init__(self, args: FinetuningArgs):
         model_name = args.model_name.split("/")[-1]
         if not args.wandb_project:
-            args.wandb_project = f"{model_name}-{args.dataset_name}-grpo"
+            args.wandb_project = f"{model_name}-{args.dataset_name}-{args.constraint}-grpo"
         if not args.wandb_run_name:
             args.wandb_run_name = (
                 f"{model_name}-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -267,6 +267,7 @@ class Trainer:
                 # Log sample outputs periodically
                 if i == 0:  # Log first sample in batch
                     print(f"\n{'=' * 80}")
+                    print(f"step: {trainer.state.global_step}")
                     print(f"PROMPT:\n{prompt}")
                     print(f"SAMPLE OUTPUT (Reward: {reward})")
                     print(f"{'=' * 80}")
@@ -340,7 +341,7 @@ class Trainer:
             learning_rate=self.args.learning_rate,
             logging_steps=self.args.log_every_n_steps,
             save_steps=self.args.save_every_n_steps,
-            save_total_limit=3,
+            save_total_limit=10,
             report_to="wandb",
             remove_unused_columns=False,
             temperature=self.args.temperature,

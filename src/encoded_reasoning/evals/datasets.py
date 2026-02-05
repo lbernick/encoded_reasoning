@@ -33,6 +33,66 @@ load_dotenv()
 ANSWER_LETTERS = ["A", "B", "C", "D"]
 
 
+# ============ Arithmetic (gen-arithmetic) ============
+
+# Path to the generated arithmetic problems
+ARITHMETIC_PROBLEMS_PATH = Path(__file__).parent.parent.parent.parent / "benchmarks" / "arithmetic_problems.jsonl"
+
+
+def arithmetic_record_to_sample(record: dict) -> Sample:
+    """Convert arithmetic problem record to Sample.
+    
+    The arithmetic dataset contains Python expressions to evaluate,
+    with integer answers.
+    """
+    return Sample(
+        input=record["problem"],
+        target=str(record["answer"]),
+        metadata={
+            "problem_number": record.get("problem_number", ""),
+            "round": record.get("round", ""),
+            "category": record.get("category", ""),
+        },
+    )
+
+
+def arithmetic_format_func(example):
+    """Format function for arithmetic problems."""
+    return example["problem"], str(example["answer"])
+
+
+@scorer(metrics=[accuracy(), stderr()])
+def arithmetic_scorer() -> Scorer:
+    """Scorer for arithmetic problems - extracts integer answer and compares."""
+
+    async def score(state: TaskState, target: Target) -> Score:
+        predicted = extract_number_answer(state.output.completion)
+
+        if predicted is None:
+            return Score(
+                value=False,
+                answer=None,
+                explanation=f"Could not extract answer. Expected: {target.text}",
+            )
+
+        # Normalize both for comparison (handle potential float representations)
+        pred_normalized = predicted
+        if pred_normalized.endswith(".0"):
+            pred_normalized = pred_normalized[:-2]
+
+        target_normalized = target.text
+        if target_normalized.endswith(".0"):
+            target_normalized = target_normalized[:-2]
+
+        return Score(
+            value=(pred_normalized == target_normalized),
+            answer=predicted,
+            explanation=f"Predicted: {predicted}, Expected: {target.text}",
+        )
+
+    return score
+
+
 # ============ GSM8K ============
 
 
@@ -74,26 +134,6 @@ def extract_number_answer(text: str) -> str | None:
     match = re.search(r"^(-?\d+(?:,\d+)*(?:\.\d+)?)\s*</answer>", text.strip())
     if match:
         return match.group(1).replace(",", "")
-
-    return None
-
-def extract_boolean_answer(text: str) -> str | None:
-    if "ANSWER:" in text:
-        return text.split("ANSWER:")[1].strip()
-    # <answer>X</answer> pattern (full tags, COT case)
-    match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
-    if match:
-        content = match.group(1).strip()
-        # Look for boolean strings (case-insensitive)
-        bool_match = re.search(r"\b(true|false)\b", content, re.IGNORECASE)
-        if bool_match:
-            return bool_match.group(1)
-        return content
-
-    # X</answer> pattern (prefilled, no-COT case) - look for boolean strings
-    match = re.search(r"^(true|false)\s*</answer>", text.strip(), re.IGNORECASE)
-    if match:
-        return match.group(1)
 
     return None
 
@@ -384,6 +424,27 @@ def boolq_format_func(example):
     answer = example["answer"]
     return question, answer
 
+def extract_boolean_answer(text: str) -> str | None:
+    if text.lower() == "true" or text.lower() == "false":
+        return text
+    if "ANSWER:" in text:
+        return text.split("ANSWER:")[1].strip()
+    # <answer>X</answer> pattern (full tags, COT case)
+    match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
+    if match:
+        content = match.group(1).strip()
+        # Look for boolean strings (case-insensitive)
+        bool_match = re.search(r"\b(true|false)\b", content, re.IGNORECASE)
+        if bool_match:
+            return bool_match.group(1)
+        return content
+
+    # X</answer> pattern (prefilled, no-COT case) - look for boolean strings
+    match = re.search(r"^(true|false)\s*</answer>", text.strip(), re.IGNORECASE)
+    if match:
+        return match.group(1)
+
+    return None
 
 @scorer(metrics=[accuracy(), stderr()])
 def boolq_scorer() -> Scorer:
@@ -398,7 +459,7 @@ def boolq_scorer() -> Scorer:
             )
 
         return Score(
-            value=(bool(predicted) == bool(target.text)),
+            value=(predicted.lower() == target.text.lower()),
             answer=predicted,
             explanation=f"Predicted: {predicted}, Expected: {target.text}",
         )
@@ -417,6 +478,17 @@ class DatasetType(Enum):
     BOOL = 4
 
 DATASETS: dict[str, DatasetRecipe] = {
+    "gen-arithmetic": {
+        # 2400 train 600 test
+        "jsonl_path": ARITHMETIC_PROBLEMS_PATH,
+        "train_split": "train",
+        "test_split": "test",
+        "train_ratio": 0.8,  # ONLY SUPPORTED FOR DATASETS IN JSONL FORMAT FOR NOW
+        "record_to_sample": arithmetic_record_to_sample,
+        "format_func": arithmetic_format_func,
+        "scorer": arithmetic_scorer,
+        "type": DatasetType.MATHEMATICAL,
+    },
     "gsm8k": {
         "hf_path": "openai/gsm8k",
         "hf_name": "main",
@@ -482,6 +554,7 @@ DATASETS: dict[str, DatasetRecipe] = {
         "hf_path": "google/boolq",
         "train_split": "train", 
         "test_split": "validation",
+        "config": "default",
         "record_to_sample": boolq_record_to_sample,
         "format_func": boolq_format_func,
         "scorer": boolq_scorer,
@@ -512,7 +585,43 @@ def load_dataset(
 
     recipe = DATASETS[name]
 
+    # Validate train_ratio is only used with jsonl datasets
+    if "train_ratio" in recipe and "jsonl_path" not in recipe:
+        raise ValueError(
+            f"Dataset '{name}' has 'train_ratio' but is not a JSONL dataset. "
+            "'train_ratio' is only supported for local JSONL datasets."
+        )
+
     # Handle datasets that need custom loading (e.g., deprecated HF loading scripts)
+    if "jsonl_path" in recipe:
+        # Load from local JSONL file
+        jsonl_path = Path(recipe["jsonl_path"])
+        if not jsonl_path.exists():
+            raise FileNotFoundError(f"Dataset file not found: {jsonl_path}")
+        
+        with open(jsonl_path) as f:
+            data = [json_module.loads(line) for line in f if line.strip()]
+
+        # Handle train/test split if defined
+        target_split = split or recipe.get("test_split", "test")
+        train_ratio = recipe.get("train_ratio", 0.8)
+        split_idx = int(len(data) * train_ratio)
+        
+        if target_split == "train":
+            data = data[:split_idx]
+        elif target_split == "test":
+            data = data[split_idx:]
+        # If split is None or unrecognized, use all data
+
+        record_to_sample = recipe["record_to_sample"]
+        samples = [record_to_sample(row) for row in data]
+
+        if shuffle:
+            random.seed(seed)
+            random.shuffle(samples)
+
+        return MemoryDataset(samples)
+
     if "json_url" in recipe:
         # Load from JSON URL
         json_url = recipe["json_url"]

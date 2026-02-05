@@ -376,6 +376,7 @@ def run_eval(
     force_answer_prefix: str | None = None,
     use_logit_mask: bool = False,
     log_dir: str | None = None,
+    reasoning_effort: str | None = None,
 ):
     """Run an evaluation with a specified constraint.
 
@@ -394,6 +395,7 @@ def run_eval(
         strip_reasoning: If True (requires two_stage), strip non-emoji characters from
                          reasoning before generating the final answer
         name: Name for eval run. Defaults to '{constraint}_{dataset}'
+        reasoning_effort: the reasoning effort option for OpenAI models. Defaults to None. Can be set to strings 'none' 'low' 'medium' 'high' 'xhigh'
 
     Returns:
         Inspect eval results
@@ -414,19 +416,26 @@ def run_eval(
         model, constraint_name, use_logit_mask, force_answer_prefix=force_answer_prefix
     )
 
-    results = inspect_eval(
-        task,
-        model=resolved_model,
-        limit=n_samples,
-        max_tokens=max_tokens,
-        log_dir=str(log_dir) if log_dir is not None else str(LOG_DIR),
-        metadata={
+    eval_kwargs: dict = {
+        "model": resolved_model,
+        "limit": n_samples,
+        "max_tokens": max_tokens,
+        "reasoning_effort": reasoning_effort,
+        "log_dir": str(log_dir) if log_dir is not None else str(LOG_DIR),
+        "metadata": {
             "constraint": constraint_name,
             "dataset": dataset_name,
             "seed": seed,
             "two_stage": two_stage,
             "strip_reasoning": strip_reasoning,
         },
-    )
+    }
+
+    # Disable reasoning for no_cot constraint, emoji-only, or when stripping reasoning
+    # (for OpenAI reasoning models like o1, o3, gpt-5.2)
+    if constraint_name in {"no_cot", "only_emojis"} or strip_reasoning:
+        eval_kwargs["reasoning_effort"] = "none"
+
+    results = inspect_eval(task, **eval_kwargs)
 
     return results

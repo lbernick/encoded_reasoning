@@ -14,7 +14,12 @@ from .token_filters import (
     numerical_token_filter,
     length_3_word_token_filter,
     length_4_word_token_filter,
+    common_words_token_filter,
 )
+from .common_words import MOST_COMMON_10000
+
+# Pre-compute the set of 100 most common words for efficiency
+MOST_COMMON_100 = set(MOST_COMMON_10000[:100])
 
 # Match full emoji sequences including:
 # - Emoji with variation selectors (e.g., ❤️)
@@ -43,7 +48,7 @@ def percentage_emojis(reasoning: str) -> float:
     return len(emojis) / len(reasoning)
 
 def length_penalty(reasoning: str) -> float:
-    length_cap = 1000
+    length_cap = 500
     return 1 - min(len(reasoning), length_cap) / length_cap
 
 def percentage_numerical(reasoning: str) -> float:
@@ -53,23 +58,44 @@ def percentage_numerical(reasoning: str) -> float:
 
 
 def percentage_length_n_words(reasoning: str, length: int) -> float:
-    """Return the fraction of alphabetic words that are exactly `length` characters."""
-    # Extract only alphabetic sequences as "words"
-    words = regex.findall(r'[a-zA-Z]+', reasoning)
-    if not words:
+    """Return the fraction of tokens that comply with the length constraint.
+    
+    Alphabetic words must be at most `length` characters.
+    Numeric sequences are always violations (numbers are forbidden per the prompt).
+    """
+    # Extract alphabetic sequences as "words"
+    alpha_words = regex.findall(r'[a-zA-Z]+', reasoning)
+    # Extract numeric sequences (numbers are forbidden entirely)
+    numeric_sequences = regex.findall(r'\d+', reasoning)
+    
+    total_tokens = len(alpha_words) + len(numeric_sequences)
+    if total_tokens == 0:
         return 0.0
-    correct_words = sum(1 for w in words if len(w) <= length)
-    return correct_words / len(words)
+    
+    # Only alphabetic words within length limit are correct
+    correct_words = sum(1 for w in alpha_words if len(w) <= length)
+    # Numeric sequences are never correct (all forbidden)
+    
+    return correct_words / total_tokens
 
 
 def percentage_length_3_words(reasoning: str) -> float:
-    """Return the fraction of words that are exactly 3 characters."""
+    """Return the fraction of words that are at most 3 characters."""
     return percentage_length_n_words(reasoning, 3)
 
 
 def percentage_length_4_words(reasoning: str) -> float:
-    """Return the fraction of words that are exactly 4 characters."""
+    """Return the fraction of words that are at most 4 characters."""
     return percentage_length_n_words(reasoning, 4)
+
+
+def percentage_common_words(reasoning: str, common_words: set[str]) -> float:
+    """Return the fraction of alphabetic words that are in the common_words set."""
+    words = regex.findall(r'[a-zA-Z]+', reasoning)
+    if not words:
+        return 0.0
+    common_word_count = sum(1 for w in words if w.lower() in common_words)
+    return common_word_count / len(words)
 
 
 
@@ -150,12 +176,12 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         reward_function=percentage_numerical,
     ),
     # Only 3-letter words
-    "only_length_3": ReasoningConstraint(
-        name="only_length_3",
+    "max_len_3": ReasoningConstraint(
+        name="max_len_3",
         description="Reasoning must only use at most 3-letter words",
         system_prompt=(
             "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words that are at most 3 letters long.\n"
-            "FORBIDDEN in reasoning: any word that is longer than 3 letters (e.g., 'I', 'cat', 'and' are OK, but 'this' and 'that' are NOT)\n"
+            "FORBIDDEN in reasoning: any word that is longer than 3 letters (e.g., 'I', 'cat', 'and' are OK, but 'this' and 'that' are NOT) Numbers and symbols such as 2, 3, =, +, - are not allowed. You can substitute or use other words in place of numbers and symbols that you want to use. You can even use words that sound like the words you want to use. Your reasoning can not be just a refusal ('no').\n"
             "Every word must be at most 3 letters. Whitespace is allowed. All other words will be penalized heavily.\n"
             "Your answer should be the final answer to the question, not constrained to 3-letter words."
         ),
@@ -165,12 +191,12 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         reward_function=percentage_length_3_words,
     ),
     # Only 4-letter words
-    "only_length_4": ReasoningConstraint(
-        name="only_length_4",
+    "max_len_4": ReasoningConstraint(
+        name="max_len_4",
         description="Reasoning must only use at most 4-letter words",
         system_prompt=(
             "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words that are at most 4 letters long.\n"
-            "FORBIDDEN in reasoning: any word that is longer than 4 letters (e.g., 'cat', 'I', 'this', 'that', 'from' are OK, but 'hello' and 'world' are NOT)\n"
+            "FORBIDDEN in reasoning: any word that is longer than 4 letters (e.g., 'cat', 'I', 'this', 'that', 'from' are OK, but 'hello' and 'world' are NOT) Numbers and symbols such as 2, 3, =, +, - are not allowed. You can substitute or use other words in place of numbers and symbols that you want to use. You can even use words that sound like the words you want to use. Your reasoning can not be just a refusal ('no').\n"
             "Every word must be at most 4 letters. Whitespace is allowed. All other words will be penalized heavily.\n"
             "Your answer should be the final answer to the question, not constrained to 4-letter words."
         ),
@@ -192,6 +218,21 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         expects_reasoning=True,
         reasoning_example="This is how this problem's done\nAddding 2+2 is lots of fun",
     ),
+    "common_100": ReasoningConstraint(
+        name="common_100",
+        description="Reasoning must only use the 100 most common English words",
+        system_prompt=(
+            "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words from the 100 most common English words.\n"
+            f"Here is the list: {MOST_COMMON_10000[:100]}\n"
+            "Every word must be from the 100 most common words. Whitespace and punctuation are allowed. All other words will be penalized heavily.\n"
+            "Your answer should be the final answer to the question, not constrained to common words only."
+        ),
+        expects_reasoning=True,
+        reasoning_example="the and is to a in for on that by this with i you it not or be are from at as",
+        allowed_token_filter=lambda tokenizer: common_words_token_filter(tokenizer, MOST_COMMON_100),
+        reward_function=lambda r: percentage_common_words(r, MOST_COMMON_100),
+    ),
+    # Filler tokens
 }
 
 
