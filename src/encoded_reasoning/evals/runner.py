@@ -157,13 +157,10 @@ RHYME_CHECK_PROMPT = """Check if this text rhymes. Focus ONLY on the last word o
 Rules:
 - AABB: line 1 rhymes with 2, line 3 rhymes with 4 (e.g., divide/ride, weight/fate)
 - ABAB: line 1 rhymes with 3, line 2 rhymes with 4
-- AAAA: all lines end with same rhyme sound
+- AAAA: all lines end with same rhyme sound (e.g., score/more/floor/evermore)
 - Near-rhymes count (weight/fate, score/floor, time/mind)
-- Ignore numbers/math/punctuation - only check the final WORD of each line
-
-Examples that SHOULD pass:
-- "Floor gives minus one from eighty-eight on that divide, / Then makes -27000 ride" → divide/ride rhyme → YES
-- "The answer here is score / I'll tell you even more" → score/more rhyme → YES
+- Repeating the exact same word (fix/fix, alive/alive) does not count as rhyming
+- Ignore numbers/math - only check the final WORD of each line
 
 Text to analyze:
 {reasoning}
