@@ -48,7 +48,7 @@ def percentage_emojis(reasoning: str) -> float:
     return len(emojis) / len(reasoning)
 
 def length_penalty(reasoning: str) -> float:
-    length_cap = 1000
+    length_cap = 500
     return 1 - min(len(reasoning), length_cap) / length_cap
 
 def percentage_numerical(reasoning: str) -> float:
