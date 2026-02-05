@@ -93,10 +93,10 @@ def exact_length_word_token_filter(tokenizer, length: int) -> set[int]:
 
 
 def length_3_word_token_filter(tokenizer) -> set[int]:
-    """Return token IDs that decode to exactly 3-letter words or whitespace."""
+    """Return token IDs that decode to 3-letter or less words or whitespace."""
     return exact_length_word_token_filter(tokenizer, 3)
 
 
 def length_4_word_token_filter(tokenizer) -> set[int]:
-    """Return token IDs that decode to exactly 4-letter words or whitespace."""
+    """Return token IDs that decode to 4-letter or less words or whitespace."""
     return exact_length_word_token_filter(tokenizer, 4)

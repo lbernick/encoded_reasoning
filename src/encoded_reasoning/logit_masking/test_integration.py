@@ -76,7 +76,7 @@ def main():
     parser.add_argument(
         "-c",
         "--constraint",
-        default="only_emojis_no_suggestions",
+        default="test_short_words",
         choices=list(ALL_CONSTRAINTS.keys()),
     )
 
