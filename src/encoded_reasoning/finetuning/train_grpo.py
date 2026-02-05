@@ -267,6 +267,7 @@ class Trainer:
                 # Log sample outputs periodically
                 if i == 0:  # Log first sample in batch
                     print(f"\n{'=' * 80}")
+                    print(f"step: {trainer.state.global_step}")
                     print(f"PROMPT:\n{prompt}")
                     print(f"SAMPLE OUTPUT (Reward: {reward})")
                     print(f"{'=' * 80}")
@@ -340,7 +341,7 @@ class Trainer:
             learning_rate=self.args.learning_rate,
             logging_steps=self.args.log_every_n_steps,
             save_steps=self.args.save_every_n_steps,
-            save_total_limit=3,
+            save_total_limit=10,
             report_to="wandb",
             remove_unused_columns=False,
             temperature=self.args.temperature,
