@@ -341,15 +341,14 @@ def run_eval(
         model, constraint_name, use_logit_mask, force_answer_prefix=force_answer_prefix
     )
 
-    results = inspect_eval(
-        task,
-        model=resolved_model,
-        limit=n_samples,
-        max_tokens=max_tokens,
-        reasoning_effort=reasoning_effort,
-        max_connections=max_connections,
-        log_dir=str(log_dir) if log_dir is not None else str(LOG_DIR),
-        metadata={
+    eval_kwargs: dict = {
+        "model": resolved_model,
+        "limit": n_samples,
+        "max_tokens": max_tokens,
+        "reasoning_effort": reasoning_effort,
+        "max_connections": max_connections,
+        "log_dir": str(log_dir) if log_dir is not None else str(LOG_DIR),
+        "metadata": {
             "constraint": constraint_name,
             "dataset": dataset_name,
             "seed": seed,
