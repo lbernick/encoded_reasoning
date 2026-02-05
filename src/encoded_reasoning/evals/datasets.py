@@ -363,6 +363,8 @@ def morehopqa_record_to_sample(row: dict) -> Sample:
 
 def extract_text_answer(text: str) -> str | None:
     """Extract text answer from model output."""
+    if "ANSWER:" in text:
+        return text.split("ANSWER:")[1].strip()
     # <answer>X</answer> pattern (full tags, COT case)
     match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
     if match:
@@ -373,7 +375,7 @@ def extract_text_answer(text: str) -> str | None:
     if match:
         return match.group(1).strip()
 
-    return None
+    return text
 
 
 def normalize_answer(answer: str) -> str:
