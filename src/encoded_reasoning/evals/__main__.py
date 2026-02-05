@@ -30,15 +30,16 @@ def short_model_name(model: str) -> str:
 
 def update_log_max_tokens(log_path: str, max_tokens: int) -> None:
     """Modify max_tokens in a log file before retrying."""
+    import gzip
     import json
 
-    with open(log_path, 'r') as f:
+    with gzip.open(log_path, 'rt', encoding='utf-8') as f:
         log_data = json.load(f)
 
     if log_data.get('eval', {}).get('config', {}) is not None:
         old_max = log_data['eval']['config'].get('max_tokens')
         log_data['eval']['config']['max_tokens'] = max_tokens
-        with open(log_path, 'w') as f:
+        with gzip.open(log_path, 'wt', encoding='utf-8') as f:
             json.dump(log_data, f)
         print(f"Updated max_tokens: {old_max} -> {max_tokens}")
 
