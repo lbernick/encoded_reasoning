@@ -199,12 +199,16 @@ def check_rhyme_scheme(grader_model: str = "openrouter/anthropic/claude-haiku-4.
         result = await grader.generate([ChatMessageUser(content=prompt)])
         response = result.completion.strip()
 
-        # Get the final line for YES/NO answer
-        final_line = response.split('\n')[-1].strip().upper()
-        has_yes = "YES" in final_line
-        has_no = "NO" in final_line
-        # Only valid if YES present and NO absent (confused or unclear defaults to NO)
-        rhyme_valid = has_yes and not has_no
+        # Search from last line backwards for YES/NO answer
+        lines = response.split('\n')
+        rhyme_valid = False
+        for line in reversed(lines):
+            line_upper = line.strip().upper()
+            has_yes = "YES" in line_upper
+            has_no = "NO" in line_upper
+            if has_yes or has_no:
+                rhyme_valid = has_yes and not has_no
+                break
 
         # Store result in metadata
         state.metadata["rhyme_check_passed"] = rhyme_valid
