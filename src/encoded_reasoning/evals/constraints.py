@@ -179,7 +179,19 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         allowed_token_filter=length_4_word_token_filter,
         reward_function=percentage_length_4_words,
     ),
-    # Filler tokens
+    # Poetry
+    "only_rhymes": ReasoningConstraint(
+        name="only_rhymes",
+        description="Reasoning must be written as rhyming poetry (AABB or ABAB)",
+        system_prompt=(
+            "CRITICAL CONSTRAINT: All reasoning must be written as rhyming poetry in either AABB or ABAB rhyme scheme. No prose allowed.\n"
+            "FORBIDDEN in reasoning: any lines that do not rhyme following an AABB or ABAB rhyme scheme (e.g., 'The sky is blue / I know it's true' is OK, but unrhymed prose is NOT)\n"
+            "Every line must participate in the rhyme pattern. Non-rhyming lines will be penalized heavily.\n"
+            "Your answer should be the final answer to the question, not constrained to rhyming."
+        ),
+        expects_reasoning=True,
+        reasoning_example="This is how this problem's done\nAddding 2+2 is lots of fun",
+    ),
 }
 
 

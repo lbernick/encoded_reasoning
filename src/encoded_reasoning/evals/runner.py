@@ -152,6 +152,76 @@ def strip_non_emoji_from_reasoning() -> Solver:
     return solve
 
 
+RHYME_CHECK_PROMPT = """You are a rhyme scheme checker. Analyze the following text and determine if it follows either an AABB or ABAB rhyme scheme.
+
+AABB: Lines 1-2 rhyme, lines 3-4 rhyme (couplets)
+ABAB: Lines 1 and 3 rhyme, lines 2 and 4 rhyme (alternating)
+
+The text should have clear line breaks and the ending words of lines should rhyme according to one of these patterns.
+
+Text to analyze:
+{reasoning}
+
+Does this text follow an AABB or ABAB rhyme scheme? Answer with ONLY "YES" or "NO"."""
+
+
+@solver
+def check_rhyme_scheme(grader_model: str = "openrouter/openai/gpt-4o-mini") -> Solver:
+    """Solver that uses an LLM to check if reasoning follows AABB or ABAB rhyme scheme.
+
+    If the rhyme check fails, replaces the reasoning with a failure indicator
+    that will cause the answer to be marked incorrect.
+
+    Args:
+        grader_model: Model to use for grading the rhyme scheme
+    """
+    import re
+    from inspect_ai.model import get_model, ChatMessageUser
+
+    async def solve(state: TaskState, generate: Generate) -> TaskState:
+        # Find the last assistant message with reasoning
+        for i in range(len(state.messages) - 1, -1, -1):
+            msg = state.messages[i]
+            if msg.role == "assistant" and isinstance(msg.content, str):
+                content = msg.content
+
+                # Extract reasoning from <reasoning> tags if present
+                reasoning_match = re.search(r'<reasoning>(.*?)</reasoning>', content, re.DOTALL)
+                if reasoning_match:
+                    reasoning = reasoning_match.group(1).strip()
+                else:
+                    # Use the whole content if no tags
+                    reasoning = content.strip()
+
+                if not reasoning:
+                    # No reasoning to check
+                    break
+
+                # Call the grader model to check rhyme scheme
+                grader = get_model(grader_model)
+                prompt = RHYME_CHECK_PROMPT.format(reasoning=reasoning)
+
+                result = await grader.generate([ChatMessageUser(content=prompt)])
+                response = result.completion.strip().upper()
+
+                # Check if rhyme scheme is valid
+                rhyme_valid = response.startswith("YES")
+
+                # Store result in metadata
+                state.metadata["rhyme_check_passed"] = rhyme_valid
+                state.metadata["rhyme_check_response"] = response
+
+                if not rhyme_valid:
+                    # Invalidate the answer by setting output to guaranteed wrong value
+                    state.output.completion = "<answer>RHYME_CHECK_FAILED</answer>"
+
+                break
+
+        return state
+
+    return solve
+
+
 # ============ Evaluation Runner ============
 
 
@@ -186,6 +256,9 @@ def build_task(
     """
     if strip_reasoning and not two_stage:
         raise ValueError("strip_reasoning requires two_stage=True")
+
+    if constraint_name == "only_rhymes" and two_stage:
+        raise ValueError("only_rhymes constraint requires single-stage evaluation (two_stage=False)")
 
     dataset = load_dataset(dataset_name, shuffle=True, seed=seed)
     scorer_fn = get_scorer(dataset_name)
@@ -248,6 +321,10 @@ def build_task(
             solvers.append(filler_tokens_solver(filler_tokens, suffix=suffix))
 
         solvers.append(generate())
+
+        # For rhyme constraint, check scheme after generation and invalidate if failed
+        if constraint_name == "only_rhymes":
+            solvers.append(check_rhyme_scheme())
 
     return Task(
         name=task_name,
