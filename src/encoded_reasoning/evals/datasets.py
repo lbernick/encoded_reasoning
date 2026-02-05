@@ -77,26 +77,6 @@ def extract_number_answer(text: str) -> str | None:
 
     return None
 
-def extract_boolean_answer(text: str) -> str | None:
-    if "ANSWER:" in text:
-        return text.split("ANSWER:")[1].strip()
-    # <answer>X</answer> pattern (full tags, COT case)
-    match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
-    if match:
-        content = match.group(1).strip()
-        # Look for boolean strings (case-insensitive)
-        bool_match = re.search(r"\b(true|false)\b", content, re.IGNORECASE)
-        if bool_match:
-            return bool_match.group(1)
-        return content
-
-    # X</answer> pattern (prefilled, no-COT case) - look for boolean strings
-    match = re.search(r"^(true|false)\s*</answer>", text.strip(), re.IGNORECASE)
-    if match:
-        return match.group(1)
-
-    return None
-
 
 @scorer(metrics=[accuracy(), stderr()])
 def gsm8k_scorer() -> Scorer:
@@ -384,6 +364,27 @@ def boolq_format_func(example):
     answer = example["answer"]
     return question, answer
 
+def extract_boolean_answer(text: str) -> str | None:
+    if text.lower() == "true" or text.lower() == "false":
+        return text
+    if "ANSWER:" in text:
+        return text.split("ANSWER:")[1].strip()
+    # <answer>X</answer> pattern (full tags, COT case)
+    match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
+    if match:
+        content = match.group(1).strip()
+        # Look for boolean strings (case-insensitive)
+        bool_match = re.search(r"\b(true|false)\b", content, re.IGNORECASE)
+        if bool_match:
+            return bool_match.group(1)
+        return content
+
+    # X</answer> pattern (prefilled, no-COT case) - look for boolean strings
+    match = re.search(r"^(true|false)\s*</answer>", text.strip(), re.IGNORECASE)
+    if match:
+        return match.group(1)
+
+    return None
 
 @scorer(metrics=[accuracy(), stderr()])
 def boolq_scorer() -> Scorer:
@@ -398,7 +399,7 @@ def boolq_scorer() -> Scorer:
             )
 
         return Score(
-            value=(bool(predicted) == bool(target.text)),
+            value=(predicted.lower() == target.text.lower()),
             answer=predicted,
             explanation=f"Predicted: {predicted}, Expected: {target.text}",
         )
