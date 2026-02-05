@@ -339,20 +339,26 @@ def run_eval(
         model, constraint_name, use_logit_mask, force_answer_prefix=force_answer_prefix
     )
 
-    results = inspect_eval(
-        task,
-        model=resolved_model,
-        limit=n_samples,
-        max_tokens=max_tokens,
-        reasoning_effort=reasoning_effort,
-        log_dir=str(log_dir) if log_dir is not None else str(LOG_DIR),
-        metadata={
+    eval_kwargs: dict = {
+        "model": resolved_model,
+        "limit": n_samples,
+        "max_tokens": max_tokens,
+        "reasoning_effort": reasoning_effort,
+        "log_dir": str(log_dir) if log_dir is not None else str(LOG_DIR),
+        "metadata": {
             "constraint": constraint_name,
             "dataset": dataset_name,
             "seed": seed,
             "two_stage": two_stage,
             "strip_reasoning": strip_reasoning,
         },
-    )
+    }
+
+    # Disable reasoning for no_cot constraint, emoji-only, or when stripping reasoning
+    # (for OpenAI reasoning models like o1, o3, gpt-5.2)
+    if constraint_name in {"no_cot", "only_emojis"} or strip_reasoning:
+        eval_kwargs["reasoning_effort"] = "none"
+
+    results = inspect_eval(task, **eval_kwargs)
 
     return results
