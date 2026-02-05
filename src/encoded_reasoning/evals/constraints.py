@@ -118,7 +118,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         expects_reasoning=False,
     ),
     "length_penalty": ReasoningConstraint(
-        name="length penalty",
+        name="length_penalty",
         description="Standard chain-of-thought reasoning with a penalty on total reasoning length",
         system_prompt="Think through this step-by-step.",
         expects_reasoning=True,
