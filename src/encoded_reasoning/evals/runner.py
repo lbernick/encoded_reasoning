@@ -165,7 +165,7 @@ Rules:
 Text to analyze:
 {reasoning}
 
-Do the line endings rhyme? Answer ONLY "YES" or "NO"."""
+Explain your reasoning, then answer YES or NO on the final line."""
 
 
 @solver
@@ -197,9 +197,14 @@ def check_rhyme_scheme(grader_model: str = "openrouter/anthropic/claude-haiku-4.
         grader = get_model(grader_model)
         prompt = RHYME_CHECK_PROMPT.format(reasoning=reasoning)
         result = await grader.generate([ChatMessageUser(content=prompt)])
-        response = result.completion.strip().upper()
+        response = result.completion.strip()
 
-        rhyme_valid = response.startswith("YES")
+        # Get the final line for YES/NO answer
+        final_line = response.split('\n')[-1].strip().upper()
+        has_yes = "YES" in final_line
+        has_no = "NO" in final_line
+        # Only valid if YES present and NO absent (confused or unclear defaults to NO)
+        rhyme_valid = has_yes and not has_no
 
         # Store result in metadata
         state.metadata["rhyme_check_passed"] = rhyme_valid
