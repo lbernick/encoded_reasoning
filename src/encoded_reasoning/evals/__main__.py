@@ -30,17 +30,19 @@ def short_model_name(model: str) -> str:
 
 def update_log_max_tokens(log_path: str, max_tokens: int) -> None:
     """Modify max_tokens in a log file before retrying."""
-    import gzip
     import json
+    import zipfile
 
-    with gzip.open(log_path, 'rt', encoding='utf-8') as f:
-        log_data = json.load(f)
+    with zipfile.ZipFile(log_path, 'r') as zf:
+        # .eval files contain a single JSON file inside
+        json_name = zf.namelist()[0]
+        log_data = json.loads(zf.read(json_name).decode('utf-8'))
 
     if log_data.get('eval', {}).get('config', {}) is not None:
         old_max = log_data['eval']['config'].get('max_tokens')
         log_data['eval']['config']['max_tokens'] = max_tokens
-        with gzip.open(log_path, 'wt', encoding='utf-8') as f:
-            json.dump(log_data, f)
+        with zipfile.ZipFile(log_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(json_name, json.dumps(log_data))
         print(f"Updated max_tokens: {old_max} -> {max_tokens}")
 
 
