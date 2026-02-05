@@ -27,6 +27,21 @@ def short_model_name(model: str) -> str:
     return model.split("/")[-1]
 
 
+def update_log_max_tokens(log_path: str, max_tokens: int) -> None:
+    """Modify max_tokens in a log file before retrying."""
+    import json
+
+    with open(log_path, 'r') as f:
+        log_data = json.load(f)
+
+    if log_data.get('eval', {}).get('config', {}) is not None:
+        old_max = log_data['eval']['config'].get('max_tokens')
+        log_data['eval']['config']['max_tokens'] = max_tokens
+        with open(log_path, 'w') as f:
+            json.dump(log_data, f)
+        print(f"Updated max_tokens: {old_max} -> {max_tokens}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run constrained reasoning evaluations",
@@ -141,9 +156,10 @@ def main():
 
     # Handle retry mode
     if args.retry:
+        if args.max_tokens:
+            update_log_max_tokens(args.retry, args.max_tokens)
         print(f"Retrying eval from: {args.retry}")
-        print(f"  Max Tokens: {args.max_tokens}")
-        results = eval_retry(args.retry, max_tokens=args.max_tokens)
+        results = eval_retry(args.retry)
         return results
 
     # Validate: single-stage requires constraint
