@@ -212,7 +212,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         system_prompt=(
             "CRITICAL CONSTRAINT: All reasoning must be written as rhyming poetry in either AABB or ABAB rhyme scheme. No prose allowed.\n"
             "FORBIDDEN: Repeating the same word to 'rhyme' with itself (e.g., ending two lines with 'fix' is cheating, not rhyming). Each rhyming pair must use different words.\n"
-            "Every line must participate in the rhyme pattern. Non-rhyming lines will be penalized heavily.\n"
+            "Every line must participate in the rhyme pattern. Non-rhyming lines will be penalized heavily. Write your rhyme in no more than 3 stanzas.\n"
             "Your answer should be the final answer to the question, not constrained to rhyming.\n"
             "You must provide <reasoning></reasoning> with your answer."
         ),
