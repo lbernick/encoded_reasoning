@@ -568,6 +568,7 @@ def load_dataset(
     split: str | None = None,
     shuffle: bool = True,
     seed: int = 42,
+    skip_ids: set[str] | None = None,
 ) -> Dataset:
     """Load a dataset by name using Inspect's hf_dataset or custom loader.
 
@@ -576,6 +577,7 @@ def load_dataset(
         split: Override the default split
         shuffle: Whether to shuffle the dataset
         seed: Random seed for shuffling
+        skip_ids: Set of sample IDs to skip (for retrying incomplete evals)
 
     Returns:
         Inspect Dataset ready for use in a Task
@@ -620,6 +622,9 @@ def load_dataset(
             random.seed(seed)
             random.shuffle(samples)
 
+        if skip_ids:
+            samples = [s for s in samples if s.id not in skip_ids]
+
         return MemoryDataset(samples)
 
     if "json_url" in recipe:
@@ -642,6 +647,9 @@ def load_dataset(
             random.seed(seed)
             random.shuffle(samples)
 
+        if skip_ids:
+            samples = [s for s in samples if s.id not in skip_ids]
+
         return MemoryDataset(samples)
 
     if "parquet_url" in recipe:
@@ -653,10 +661,13 @@ def load_dataset(
             random.seed(seed)
             random.shuffle(samples)
 
+        if skip_ids:
+            samples = [s for s in samples if s.id not in skip_ids]
+
         return MemoryDataset(samples)
 
     # Standard HuggingFace dataset loading
-    return hf_dataset(
+    dataset = hf_dataset(
         recipe["hf_path"],
         name=recipe.get("hf_name"),
         split=split or recipe["test_split"],
@@ -664,6 +675,13 @@ def load_dataset(
         shuffle=shuffle,
         seed=seed,
     )
+
+    if skip_ids:
+        samples = [s for s in dataset]
+        samples = [s for s in samples if s.id not in skip_ids]
+        return MemoryDataset(samples)
+
+    return dataset
 
 
 def get_scorer(name: str) -> Callable[[], Scorer]:

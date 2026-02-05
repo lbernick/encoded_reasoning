@@ -264,6 +264,7 @@ def build_task(
     two_stage: bool = False,
     strip_reasoning: bool = False,
     name: str | None = None,
+    skip_ids: set[str] | None = None,
 ) -> Task:
     """Build a single evaluation task.
 
@@ -279,6 +280,7 @@ def build_task(
         strip_reasoning: If True (requires two_stage), strip non-emoji characters from
                          reasoning before generating the final answer
         name: Name for this task. Defaults to '{constraint}_{dataset}'
+        skip_ids: Set of sample IDs to skip (for retrying incomplete evals)
 
     Returns:
         Inspect Task
@@ -289,7 +291,7 @@ def build_task(
     if constraint_name == "only_rhymes" and two_stage:
         raise ValueError("only_rhymes constraint requires single-stage evaluation (two_stage=False)")
 
-    dataset = load_dataset(dataset_name, shuffle=True, seed=seed)
+    dataset = load_dataset(dataset_name, shuffle=True, seed=seed, skip_ids=skip_ids)
     scorer_fn = get_scorer(dataset_name)
 
     # Get dataset-specific system prompt if any
@@ -406,6 +408,7 @@ def run_eval(
     use_logit_mask: bool = False,
     log_dir: str | None = None,
     reasoning_effort: str | None = None,
+    skip_ids: set[str] | None = None,
 ):
     """Run an evaluation with a specified constraint.
 
@@ -439,6 +442,7 @@ def run_eval(
         two_stage=two_stage,
         strip_reasoning=strip_reasoning,
         name=name,
+        skip_ids=skip_ids,
     )
 
     resolved_model = _resolve_model(

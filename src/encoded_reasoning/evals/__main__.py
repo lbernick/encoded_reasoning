@@ -17,33 +17,15 @@ import argparse
 import os
 from pathlib import Path
 
-from inspect_ai import eval_retry
 from .runner import run_eval, LOG_DIR
 from .datasets import DATASETS
 from .constraints import CONSTRAINTS
+from .retry_utils import update_log_max_tokens, get_retry_info, merge_eval_logs
 
 
 def short_model_name(model: str) -> str:
     """Extract short model name from full path (e.g., 'openrouter/openai/gpt-4o-mini' -> 'gpt-4o-mini')."""
     return model.split("/")[-1]
-
-
-def update_log_max_tokens(log_path: str, max_tokens: int) -> None:
-    """Modify max_tokens in a log file before retrying."""
-    import json
-    import zipfile
-
-    with zipfile.ZipFile(log_path, 'r') as zf:
-        # .eval files contain a single JSON file inside
-        json_name = zf.namelist()[0]
-        log_data = json.loads(zf.read(json_name).decode('utf-8'))
-
-    if log_data.get('eval', {}).get('config', {}) is not None:
-        old_max = log_data['eval']['config'].get('max_tokens')
-        log_data['eval']['config']['max_tokens'] = max_tokens
-        with zipfile.ZipFile(log_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr(json_name, json.dumps(log_data))
-        print(f"Updated max_tokens: {old_max} -> {max_tokens}")
 
 
 def main():
@@ -167,10 +149,43 @@ def main():
         if not retry_path.exists():
             parser.error(f"Log file not found: {args.retry} (also checked {LOG_DIR})")
 
-        if args.max_tokens:
-            update_log_max_tokens(str(retry_path), args.max_tokens)
+        info = get_retry_info(str(retry_path))
+        skip_ids = info['completed_ids']
+        metadata = info['metadata']
+
         print(f"Retrying eval from: {retry_path}")
-        results = eval_retry(str(retry_path))
+        print(f"  Completed: {info['completed_count']}/{info['total_samples']} samples")
+        print(f"  Skipping {len(skip_ids)} completed samples")
+
+        # Use metadata from log, allow CLI overrides
+        results = run_eval(
+            constraint_name=metadata.get('constraint') or args.constraint,
+            model=args.model,
+            dataset_name=metadata.get('dataset') or args.dataset,
+            n_samples=None,  # Run all remaining
+            seed=metadata.get('seed', args.seed),
+            max_tokens=args.max_tokens,
+            skip_ids=skip_ids,
+            log_dir=args.log_dir,
+        )
+
+        # Merge retry results back into original log
+        if results and len(results) > 0:
+            retry_log_path = results[0].location
+            if retry_log_path:
+                merged_path = merge_eval_logs(str(retry_path), retry_log_path)
+                print(f"\nMerged results saved to: {merged_path}")
+
+                # Print merged stats
+                from .retry_utils import read_eval_log
+                merged = read_eval_log(merged_path)
+                merged_results = merged.get('results', {})
+                for score in merged_results.get('scores', []):
+                    metrics = score.get('metrics', {})
+                    acc = metrics.get('accuracy', {}).get('value', 0)
+                    stderr = metrics.get('stderr', {}).get('value', 0)
+                    print(f"  {score.get('name')}: {acc:.3f} ± {stderr:.3f}")
+
         return results
 
     # Validate: single-stage requires constraint
