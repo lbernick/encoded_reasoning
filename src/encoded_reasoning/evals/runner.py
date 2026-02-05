@@ -299,6 +299,7 @@ def run_eval(
     force_answer_prefix: str | None = None,
     use_logit_mask: bool = False,
     log_dir: str | None = None,
+    reasoning_effort: str | None = None,
 ):
     """Run an evaluation with a specified constraint.
 
@@ -317,6 +318,7 @@ def run_eval(
         strip_reasoning: If True (requires two_stage), strip non-emoji characters from
                          reasoning before generating the final answer
         name: Name for eval run. Defaults to '{constraint}_{dataset}'
+        reasoning_effort: the reasoning effort option for OpenAI models. Defaults to None. Can be set to strings 'none' 'low' 'medium' 'high' 'xhigh'
 
     Returns:
         Inspect eval results
@@ -342,6 +344,7 @@ def run_eval(
         model=resolved_model,
         limit=n_samples,
         max_tokens=max_tokens,
+        reasoning_effort=reasoning_effort,
         log_dir=str(log_dir) if log_dir is not None else str(LOG_DIR),
         metadata={
             "constraint": constraint_name,

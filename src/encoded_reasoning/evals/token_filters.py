@@ -94,10 +94,19 @@ def exact_length_word_token_filter(tokenizer, length: int) -> set[int]:
 
 
 def length_3_word_token_filter(tokenizer) -> set[int]:
-    """Return token IDs that decode to exactly 3-letter whitespace."""
-    return exact_length_word_token_filter(tokenizer, 3)
+    """Return token IDs that decode to words of at most 3 letters."""
+    return short_word_token_filter(tokenizer, max_chars=3)
 
 
 def length_4_word_token_filter(tokenizer) -> set[int]:
-    """Return token IDs that decode to exactly 4-letter whitespace."""
-    return exact_length_word_token_filter(tokenizer, 4)
+    """Return token IDs that decode to words of at most 4 letters."""
+    return short_word_token_filter(tokenizer, max_chars=4)
+
+
+def common_words_token_filter(tokenizer, common_words: set[str]) -> set[int]:
+    """Return token IDs that decode to words in the common_words set."""
+    return {
+        tok_id for tok, tok_id in tokenizer.get_vocab().items()
+        if (decoded := tokenizer.decode([tok_id]).strip().lower())
+        and decoded in common_words
+    } | whitespace_token_filter(tokenizer) | punctuation_token_filter(tokenizer)
