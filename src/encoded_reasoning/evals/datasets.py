@@ -495,6 +495,8 @@ def hotpotqa_record_to_sample(row: dict) -> Sample:
 def filter_hotpotqa(example: Sample) -> bool:
     if example.metadata["level"] == "hard":
         return False
+    if example.metadata["type"] == "comparison":
+        return False
     return True
 
 # ============ BOOLQ ============
