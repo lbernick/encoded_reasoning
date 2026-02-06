@@ -117,7 +117,7 @@ def main():
     parser.add_argument(
         "--strip-reasoning",
         action="store_true",
-        help="Strip non-emoji characters from reasoning before final answer (requires --two-stage)",
+        help="Strip reasoning to only allowed content based on constraint before final answer (requires --two-stage)",
     )
     parser.add_argument(
         "--log-dir",

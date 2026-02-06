@@ -10,8 +10,6 @@ import regex
 from typing import Callable
 
 from .token_filters import (
-    emoji_token_filter,
-    numerical_token_filter,
     length_3_word_token_filter,
     length_4_word_token_filter,
     length_5_word_token_filter,
@@ -104,6 +102,85 @@ def percentage_common_words(reasoning: str, common_words: set[str]) -> float:
     return common_word_count / len(words)
 
 
+# ============ Strip Functions (for two-stage evaluation) ============
+
+def strip_to_pattern(text: str, patterns: regex.Pattern | list[regex.Pattern]) -> str:
+    """Extract only characters matching the pattern(s), preserving newlines."""
+    if isinstance(patterns, regex.Pattern):
+        patterns = [patterns]
+
+    lines = text.split("\n")
+    stripped_lines = []
+    for line in lines:
+        all_matches = []
+        for pattern in patterns:
+            all_matches.extend(pattern.findall(line))
+        stripped_lines.append("".join(all_matches))
+    return "\n".join(stripped_lines)
+
+
+def strip_to_short_words(text: str, max_len: int) -> str:
+    """Keep only words with <= max_len characters, preserving structure."""
+    def replace_long_words(match: regex.Match) -> str:
+        word = match.group(0)
+        return word if len(word) <= max_len else ""
+
+    # Replace words longer than max_len with empty string
+    return regex.sub(r'[a-zA-Z]+', replace_long_words, text)
+
+
+def strip_to_common_words(text: str, common_words: set[str]) -> str:
+    """Keep only words from the common_words set, preserving structure."""
+    def replace_uncommon(match: regex.Match) -> str:
+        word = match.group(0)
+        return word if word.lower() in common_words else ""
+
+    return regex.sub(r'[a-zA-Z]+', replace_uncommon, text)
+
+
+# Pattern for numbers and whitespace
+NUMERICAL_PATTERN = regex.compile(r'[\d\s]+')
+
+# Common patterns for combining
+WHITESPACE_PATTERN = regex.compile(r'[\s\p{Format}]+')
+PUNCTUATION_PATTERN = regex.compile(r'[.,;:!?\'"()\[\]{}]+')
+
+
+def make_pattern_token_filter(patterns: regex.Pattern | list[regex.Pattern]):
+    """Create a token filter function from pattern(s).
+
+    Args:
+        patterns: Single pattern or list of patterns. Tokens are allowed if
+                  the pattern(s) fully cover the decoded content.
+
+    Returns:
+        A function that takes a tokenizer and returns allowed token IDs
+    """
+    if isinstance(patterns, regex.Pattern):
+        patterns = [patterns]
+
+    def token_filter(tokenizer) -> set[int]:
+        allowed = set()
+        for tok, tok_id in tokenizer.get_vocab().items():
+            decoded = tokenizer.decode([tok_id])
+            if not decoded:
+                continue
+
+            # Collect all matches from all patterns
+            all_matches = []
+            for pattern in patterns:
+                all_matches.extend(pattern.findall(decoded))
+
+            if all_matches:
+                # Check if matches fully cover the content
+                reconstructed = "".join(all_matches)
+                if decoded == reconstructed:
+                    allowed.add(tok_id)
+
+        return allowed
+
+    return token_filter
+
 
 @dataclass
 class ReasoningConstraint:
@@ -120,9 +197,23 @@ class ReasoningConstraint:
     # When set (and a local model is provided), generation uses logit masking to
     # hard-enforce that only these tokens can appear inside <reasoning> tags.
     # When None, no logit masking is applied (soft enforcement via prompt only).
+    # If not provided but allowed_patterns is set, will be auto-generated in __post_init__.
     allowed_token_filter: Callable | None = None
     # A function that accepts a non-empty reasoning string and returns a float between 0 and 1
     reward_function: Callable | None = None
+    # Regex pattern(s) for character-level constraints (emojis, numbers).
+    # Can be a single pattern or list of patterns. Used for:
+    # 1. Stripping reasoning in two-stage eval (when strip_function is None)
+    # 2. Auto-generating allowed_token_filter (when allowed_token_filter is None)
+    allowed_patterns: regex.Pattern | list[regex.Pattern] | None = None
+    # Custom function to strip reasoning to allowed content (for word-level constraints).
+    # Takes text, returns stripped text. If None, falls back to allowed_patterns.
+    strip_function: Callable[[str], str] | None = None
+
+    def __post_init__(self):
+        # Auto-generate token filter from patterns if not explicitly provided
+        if self.allowed_token_filter is None and self.allowed_patterns is not None:
+            self.allowed_token_filter = make_pattern_token_filter(self.allowed_patterns)
 
 
 # ============ Constraint Registry (single source of truth) ============
@@ -164,8 +255,9 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         ),
         expects_reasoning=True,
         reasoning_example="🤔🔢🧑‍🤝‍🧑🧮⏳➕",
-        allowed_token_filter=emoji_token_filter,
         reward_function=percentage_emojis,
+        # Token filter auto-generated from patterns
+        allowed_patterns=[EMOJI_PATTERN, WHITESPACE_PATTERN, PUNCTUATION_PATTERN],
     ),
     # Only numbers
     "only_numbers": ReasoningConstraint(
@@ -178,8 +270,9 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
             "Your answer should be the final answer to the question, not constrained to being numbers only. You can output in the appropriate format."
         ),
         expects_reasoning=True,
-        allowed_token_filter=numerical_token_filter,
         reward_function=percentage_numerical,
+        # Token filter auto-generated from pattern (NUMERICAL_PATTERN already includes whitespace)
+        allowed_patterns=NUMERICAL_PATTERN,
     ),
     # Only 3-letter words
     "max_len_3": ReasoningConstraint(
@@ -195,6 +288,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         reasoning_example="the cat sat and ate one big fat ham",
         allowed_token_filter=length_3_word_token_filter,
         reward_function=percentage_length_3_words,
+        strip_function=lambda text: strip_to_short_words(text, 3),
     ),
     # Only 4-letter words
     "max_len_4": ReasoningConstraint(
@@ -210,6 +304,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         reasoning_example="this does work well with four each time",
         allowed_token_filter=length_4_word_token_filter,
         reward_function=percentage_length_4_words,
+        strip_function=lambda text: strip_to_short_words(text, 4),
     ),
     # Poetry
     "only_rhymes": ReasoningConstraint(
@@ -238,6 +333,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         reasoning_example="I am doing this under five",
         allowed_token_filter=length_5_word_token_filter,
         reward_function=percentage_length_5_words,
+        strip_function=lambda text: strip_to_short_words(text, 5),
     ),
     "common_100": ReasoningConstraint(
         name="common_100",
@@ -252,6 +348,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         reasoning_example="the and is to a in for on that by this with i you it not or be are from at as",
         allowed_token_filter=lambda tokenizer: common_words_token_filter(tokenizer, MOST_COMMON_100),
         reward_function=lambda r: percentage_common_words(r, MOST_COMMON_100),
+        strip_function=lambda text: strip_to_common_words(text, MOST_COMMON_100),
     ),
     # Filler tokens
 }

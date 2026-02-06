@@ -21,8 +21,8 @@ from inspect_ai.solver import (
     Generate,
 )
 
-from .datasets import load_dataset, get_scorer, get_dataset_system_prompt, get_dataset_type 
-from .constraints import get_constraint, EMOJI_PATTERN
+from .datasets import load_dataset, get_scorer, get_dataset_system_prompt, get_dataset_type
+from .constraints import get_constraint, strip_to_pattern
 from .prompts import get_base_system_prompt, get_example, get_base_answer_with_reasoning_system_prompt, BASE_REASONING_PROMPT
 
 from inspect_ai.model import get_model
@@ -113,36 +113,43 @@ def insert_system_message(
 
 
 @solver
-def strip_non_emoji_from_reasoning() -> Solver:
-    """Solver that strips non-emoji characters from the last assistant message.
+def strip_reasoning_solver(constraint_name: str) -> Solver:
+    """Solver that strips reasoning to only allowed content based on constraint.
 
-    This is useful for two-stage evaluation where you want to test if the model
-    can answer correctly when its reasoning is reduced to only emojis.
+    Uses constraint.strip_function if defined (for word-level constraints),
+    otherwise falls back to constraint.allowed_patterns (for character-level constraints).
     Preserves newlines to maintain structure.
+
+    Args:
+        constraint_name: Name of the constraint to use for stripping rules
     """
-    import regex  # Use regex module for proper Unicode emoji support
+    from copy import copy
+
+    constraint = get_constraint(constraint_name)
 
     async def solve(state: TaskState, generate: Generate) -> TaskState:
         # Find the last assistant message
         for i in range(len(state.messages) - 1, -1, -1):
             msg = state.messages[i]
             if msg.role == "assistant" and isinstance(msg.content, str):
-                # Process line by line to preserve newlines
-                lines = msg.content.split("\n")
-                stripped_lines = []
-                for line in lines:
-                    emojis = EMOJI_PATTERN.findall(line)
-                    stripped_lines.append("".join(emojis))
-                stripped_content = "\n".join(stripped_lines)
+                content = msg.content
+
+                # Use strip_function if available (word-level constraints)
+                if constraint.strip_function is not None:
+                    stripped_content = constraint.strip_function(content)
+                # Fall back to allowed_patterns (character-level constraints)
+                elif constraint.allowed_patterns is not None:
+                    stripped_content = strip_to_pattern(content, constraint.allowed_patterns)
+                else:
+                    # No stripping available for this constraint
+                    break
 
                 # Update the message content
-                from copy import copy
-
                 new_msg = copy(msg)
                 new_msg.content = (
                     stripped_content
                     if stripped_content.strip()
-                    else "(no emojis found)"
+                    else f"(no content matching {constraint_name} constraint)"
                 )
                 state.messages[i] = new_msg
                 break
@@ -277,8 +284,8 @@ def build_task(
         repeat_input: Number of times to repeat the question in the prompt (single-stage only)
         filler_tokens: Number of filler tokens (periods) to add to the assistant message (single-stage only)
         two_stage: If True, use two-stage evaluation (reason first, then answer)
-        strip_reasoning: If True (requires two_stage), strip non-emoji characters from
-                         reasoning before generating the final answer
+        strip_reasoning: If True (requires two_stage), strip reasoning to only allowed
+                         content based on the constraint (uses strip_function or allowed_patterns)
         name: Name for this task. Defaults to '{constraint}_{dataset}'
         skip_ids: Set of sample IDs to skip (for retrying incomplete evals)
 
@@ -290,6 +297,15 @@ def build_task(
 
     if constraint_name == "only_rhymes" and two_stage:
         raise ValueError("only_rhymes constraint requires single-stage evaluation (two_stage=False)")
+
+    # Validate that constraint supports stripping if strip_reasoning is requested
+    if strip_reasoning:
+        constraint = get_constraint(constraint_name)
+        if constraint.strip_function is None and constraint.allowed_patterns is None:
+            raise ValueError(
+                f"strip_reasoning requires constraint '{constraint_name}' to have "
+                "strip_function or allowed_patterns defined"
+            )
 
     dataset = load_dataset(dataset_name, shuffle=True, seed=seed, skip_ids=skip_ids)
     scorer_fn = get_scorer(dataset_name)
@@ -314,9 +330,9 @@ def build_task(
             generate(),
         ]
 
-        # Optionally strip non-emoji characters from reasoning
+        # Optionally strip reasoning to only allowed content
         if strip_reasoning:
-            solvers.append(strip_non_emoji_from_reasoning())
+            solvers.append(strip_reasoning_solver(constraint_name))
 
         solvers.extend(
             [
@@ -425,8 +441,8 @@ def run_eval(
         repeat_input: Number of times to repeat the question in the prompt (single-stage only)
         filler_tokens: Number of filler tokens (periods) to add to the assistant message (single-stage only)
         two_stage: If True, use two-stage evaluation (reason first, then answer)
-        strip_reasoning: If True (requires two_stage), strip non-emoji characters from
-                         reasoning before generating the final answer
+        strip_reasoning: If True (requires two_stage), strip reasoning to only allowed
+                         content based on the constraint (uses strip_function or allowed_patterns)
         name: Name for eval run. Defaults to '{constraint}_{dataset}'
         reasoning_effort: the reasoning effort option for OpenAI models. Defaults to None. Can be set to strings 'none' 'low' 'medium' 'high' 'xhigh'
         max_connections: number of API calls to simultaneously make. Defaults to None, which Inspect defaults as 10.
