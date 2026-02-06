@@ -436,7 +436,7 @@ def run_eval(
     log_dir: str | None = None,
     reasoning_effort: str | None = None,
     skip_ids: set[str] | None = None,
-    max_connections: int | None = None
+    max_connections: int | None = None,
     enforce_constraint: bool = True,
 ):
     """Run an evaluation with a specified constraint.
