@@ -264,12 +264,12 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         name="only_numbers",
         description="Reasoning must only use numbers",
         system_prompt=(
-            "CRITICAL CONSTRAINT: Your reasoning must contain ONLY numbers and whitespaces.\n"
-            "FORBIDDEN in reasoning: letters (a-z, A-Z), and any ascii or utf-8 symbols besides (0-9)\n"
-            "Numbers and whitespace are the only characters that can appear in your reasoning. All other characters will be penalized heavily."
-            "Your answer should be the final answer to the question, not constrained to being numbers only. You can output in the appropriate format."
+            "This is a test of numerical communication. You can write whatever you want, but only the numbers will be passed forward to the answer stage.\n"
+            "Include all the numbers you need to solve the problem.\n"
+            "Your answer can contain normal text."
         ),
         expects_reasoning=True,
+        reasoning_example="I'll track: items, rate, total. 5 10 50 3 150",
         reward_function=percentage_numerical,
         # Token filter auto-generated from pattern (NUMERICAL_PATTERN already includes whitespace)
         allowed_patterns=NUMERICAL_PATTERN,

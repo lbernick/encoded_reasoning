@@ -100,6 +100,7 @@ def main():
     parser.add_argument(
         "--two-stage",
         action="store_true",
+        default=os.environ.get("TWO_STAGE", "").lower() in ("true", "1"),
         help="Use two-stage evaluation: reason first (without answer), then answer",
     )
     parser.add_argument(
@@ -117,6 +118,7 @@ def main():
     parser.add_argument(
         "--strip-reasoning",
         action="store_true",
+        default=os.environ.get("STRIP_REASONING", "").lower() in ("true", "1"),
         help="Strip reasoning to only allowed content based on constraint before final answer (requires --two-stage)",
     )
     parser.add_argument(
