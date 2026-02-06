@@ -275,7 +275,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
             "Output the key numbers from your calculations separated by spaces.\n\n"
             "Example problem: A store sells 5 apples for $2. How much do 15 apples cost?\n"
             "Example response: 5 2 15 3\n\n"
-            "IMPORTANT: Do NOT provide the final answer. You will be asked for the answer separately.\n"
+            "IMPORTANT: Do NOT provide the final answer. You will be asked for the answer separately. Do not include anything but numbers in this stage. \n"
         ),
         expects_reasoning=True,
         reasoning_example="5 10 50 3 150",
