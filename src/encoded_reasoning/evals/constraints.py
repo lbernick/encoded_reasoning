@@ -209,14 +209,17 @@ class ReasoningConstraint:
     # Custom function to strip reasoning to allowed content (for word-level constraints).
     # Takes text, returns stripped text. If None, falls back to allowed_patterns.
     strip_function: Callable[[str], str] | None = None
+    # Minimum compliance score required to count the sample as valid when
+    # strict constraint enforcement is enabled. Defaults to perfect compliance.
+    pass_threshold: float = 1.0
+    # If False, system_prompt replaces BASE_REASONING_PROMPT entirely (for two-stage).
+    # If True (default), system_prompt is appended to BASE_REASONING_PROMPT.
+    use_base_prompt: bool = True
 
     def __post_init__(self):
         # Auto-generate token filter from patterns if not explicitly provided
         if self.allowed_token_filter is None and self.allowed_patterns is not None:
             self.allowed_token_filter = make_pattern_token_filter(self.allowed_patterns)
-    # Minimum compliance score required to count the sample as valid when
-    # strict constraint enforcement is enabled. Defaults to perfect compliance.
-    pass_threshold: float = 1.0
 
 
 # ============ Constraint Registry (single source of truth) ============

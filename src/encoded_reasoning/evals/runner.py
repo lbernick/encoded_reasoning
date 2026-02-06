@@ -327,7 +327,10 @@ def build_task(
 
     if two_stage:  # Reason first, then answer
         constraint = get_constraint(constraint_name)
-        reasoning_prompt = BASE_REASONING_PROMPT + constraint.system_prompt
+        if constraint.use_base_prompt:
+            reasoning_prompt = BASE_REASONING_PROMPT + constraint.system_prompt
+        else:
+            reasoning_prompt = constraint.system_prompt
         if dataset_prompt:
             reasoning_prompt += "\n" + dataset_prompt
 
