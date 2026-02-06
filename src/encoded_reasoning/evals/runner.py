@@ -21,7 +21,13 @@ from inspect_ai.solver import (
     Generate,
 )
 
-from .datasets import load_dataset, get_scorer, get_dataset_system_prompt, get_dataset_type 
+from .datasets import (
+    load_dataset,
+    get_scorer,
+    get_dataset_system_prompt,
+    get_dataset_type,
+    wrap_with_constraint,
+)
 from .constraints import get_constraint, EMOJI_PATTERN
 from .prompts import get_base_system_prompt, get_example, get_base_answer_with_reasoning_system_prompt, BASE_REASONING_PROMPT
 
@@ -165,6 +171,7 @@ def build_task(
     two_stage: bool = False,
     strip_reasoning: bool = False,
     name: str | None = None,
+    enforce_constraint: bool = True,
 ) -> Task:
     """Build a single evaluation task.
 
@@ -189,6 +196,10 @@ def build_task(
 
     dataset = load_dataset(dataset_name, shuffle=True, seed=seed)
     scorer_fn = get_scorer(dataset_name)
+
+    # Wrap scorer if strict enforcement is requested (post-hoc, prompt-based)
+    if enforce_constraint:
+        scorer_fn = wrap_with_constraint(scorer_fn, constraint_name, enforce=True)
 
     # Get dataset-specific system prompt if any
     dataset_prompt = get_dataset_system_prompt(dataset_name)
@@ -300,7 +311,8 @@ def run_eval(
     use_logit_mask: bool = False,
     log_dir: str | None = None,
     reasoning_effort: str | None = None,
-    max_connections: int | None = None
+    max_connections: int | None = None,
+    enforce_constraint: bool = True,
 ):
     """Run an evaluation with a specified constraint.
 
@@ -335,6 +347,7 @@ def run_eval(
         two_stage=two_stage,
         strip_reasoning=strip_reasoning,
         name=name,
+        enforce_constraint=enforce_constraint,
     )
 
     resolved_model = _resolve_model(
