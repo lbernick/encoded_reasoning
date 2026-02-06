@@ -270,12 +270,15 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         name="only_numbers",
         description="Reasoning must only use numbers",
         system_prompt=(
-            "This is a test of numerical communication. Only the numbers will be given when determining the answer.\n"
-            "Work through how you would solve this problem but do not provide the answer.\n"
-            "When working through the problem, avoid using letters and symbols and provide just the numbers as this will be all that is available to you when you are answering. Only include numbers in your output.\n"
+            "This is a test of numerical communication. Only the numbers from your work will be visible when you provide your answer.\n"
+            "Work through the problem using ONLY numbers - no words, no symbols, no letters.\n"
+            "Output the key numbers from your calculations separated by spaces.\n\n"
+            "Example problem: A store sells 5 apples for $2. How much do 15 apples cost?\n"
+            "Example response: 5 2 15 3\n\n"
+            "IMPORTANT: Do NOT provide the final answer. You will be asked for the answer separately.\n"
         ),
         expects_reasoning=True,
-        reasoning_example="I'll track: items, rate, total. 5 10 50 3 150",
+        reasoning_example="5 10 50 3 150",
         use_base_prompt=False,
         reward_function=percentage_numerical,
         # Token filter auto-generated from pattern (NUMERICAL_PATTERN already includes whitespace)

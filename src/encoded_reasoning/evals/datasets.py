@@ -499,6 +499,33 @@ def filter_hotpotqa(example: Sample) -> bool:
         return False
     return True
 
+# ============ StrategyQA ============
+
+def strategyqa_record_to_sample(record: dict) -> Sample:
+    """Convert StrategyQA record to Sample.
+
+    StrategyQA is a yes/no QA dataset requiring multi-step implicit reasoning.
+    """
+    # Answer is boolean, convert to string
+    answer = record["answer"]
+    if isinstance(answer, bool):
+        answer = "True" if answer else "False"
+    else:
+        # Handle "yes"/"no" format
+        answer = "True" if str(answer).lower() in ("yes", "true") else "False"
+
+    return Sample(
+        input=record["question"],
+        target=answer,
+        id=record.get("qid", ""),
+        metadata={
+            "term": record.get("term", ""),
+            "facts": record.get("facts", []),
+            "decomposition": record.get("decomposition", []),
+        },
+    )
+
+
 # ============ BOOLQ ============
 
 def boolq_record_to_sample(record: dict) -> Sample:
@@ -647,15 +674,22 @@ DATASETS: dict[str, DatasetRecipe] = {
     },
     "hotpotqa": {
         "hf_path": "hotpotqa/hotpot_qa",
-        "train_split": "train", 
+        "train_split": "train",
         # Using the train split here because the test split only has hard questions,
         # and I'm not planning on training on this
-        "test_split": "train", 
+        "test_split": "train",
         "hf_name": "distractor",
         "record_to_sample": hotpotqa_record_to_sample,
         "scorer": morehopqa_scorer,
         "type": DatasetType.FREE_RESPONSE,
         "filter_func": filter_hotpotqa,
+    },
+    "strategyqa": {
+        # Load directly from JSON due to HF schema issues (test split has no answers)
+        "json_url": "https://huggingface.co/datasets/voidful/StrategyQA/resolve/main/strategyqa_train.json",
+        "record_to_sample": strategyqa_record_to_sample,
+        "scorer": boolq_scorer,
+        "type": DatasetType.BOOL,
     },
 }
 
