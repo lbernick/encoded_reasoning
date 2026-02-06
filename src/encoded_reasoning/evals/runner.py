@@ -21,6 +21,7 @@ from inspect_ai.solver import (
     Generate,
 )
 
+from .constraints import get_constraint, strip_to_pattern, EMOJI_PATTERN
 from .datasets import (
     load_dataset,
     get_scorer,
@@ -28,7 +29,6 @@ from .datasets import (
     get_dataset_type,
     wrap_with_constraint,
 )
-from .constraints import get_constraint, EMOJI_PATTERN
 from .prompts import get_base_system_prompt, get_example, get_base_answer_with_reasoning_system_prompt, BASE_REASONING_PROMPT
 
 from inspect_ai.model import get_model
@@ -119,39 +119,145 @@ def insert_system_message(
 
 
 @solver
-def strip_non_emoji_from_reasoning() -> Solver:
-    """Solver that strips non-emoji characters from the last assistant message.
+def strip_reasoning_solver(constraint_name: str) -> Solver:
+    """Solver that strips reasoning to only allowed content based on constraint.
 
-    This is useful for two-stage evaluation where you want to test if the model
-    can answer correctly when its reasoning is reduced to only emojis.
+    Uses constraint.strip_function if defined (for word-level constraints),
+    otherwise falls back to constraint.allowed_patterns (for character-level constraints).
     Preserves newlines to maintain structure.
+
+    Args:
+        constraint_name: Name of the constraint to use for stripping rules
     """
-    import regex  # Use regex module for proper Unicode emoji support
+    from copy import copy
+
+    constraint = get_constraint(constraint_name)
 
     async def solve(state: TaskState, generate: Generate) -> TaskState:
         # Find the last assistant message
         for i in range(len(state.messages) - 1, -1, -1):
             msg = state.messages[i]
             if msg.role == "assistant" and isinstance(msg.content, str):
-                # Process line by line to preserve newlines
-                lines = msg.content.split("\n")
-                stripped_lines = []
-                for line in lines:
-                    emojis = EMOJI_PATTERN.findall(line)
-                    stripped_lines.append("".join(emojis))
-                stripped_content = "\n".join(stripped_lines)
+                content = msg.content
+
+                # Use strip_function if available (word-level constraints)
+                if constraint.strip_function is not None:
+                    stripped_content = constraint.strip_function(content)
+                # Fall back to allowed_patterns (character-level constraints)
+                elif constraint.allowed_patterns is not None:
+                    stripped_content = strip_to_pattern(content, constraint.allowed_patterns)
+                else:
+                    # No stripping available for this constraint
+                    break
 
                 # Update the message content
-                from copy import copy
-
                 new_msg = copy(msg)
                 new_msg.content = (
                     stripped_content
                     if stripped_content.strip()
-                    else "(no emojis found)"
+                    else f"(no content matching {constraint_name} constraint)"
                 )
                 state.messages[i] = new_msg
                 break
+
+        return state
+
+    return solve
+
+
+RHYME_STANZA_PROMPT = """Check if this stanza rhymes.
+
+Stanza:
+{stanza}
+
+The line-ending words are: {words}
+
+Rules:
+- Any consistent pattern counts (AABB, ABAB, ABBA, etc.)
+- Near-rhymes count (floor/for, weight/fate, sight/aright)
+- The same word repeated (fix/fix) does not count as rhyming
+
+Explain briefly, then answer YES or NO on the final line."""
+
+
+def extract_last_word(line: str) -> str | None:
+    """Extract the last alphabetic word from a line."""
+    import re
+    match = re.search(r'([a-zA-Z]+)[^a-zA-Z]*$', line.strip())
+    return match.group(1).lower() if match else None
+
+
+@solver
+def check_rhyme_scheme(grader_model: str = "openrouter/anthropic/claude-haiku-4.5") -> Solver:
+    """Solver that checks if reasoning follows a rhyme scheme.
+
+    Splits text into stanzas (by double newlines), extracts last words, checks each stanza.
+    Runs after single-stage generation. If the rhyme check fails, overwrites the output.
+
+    Args:
+        grader_model: Model to use for grading the rhyme scheme
+    """
+    import re
+    from inspect_ai.model import get_model, ChatMessageUser
+
+    async def solve(state: TaskState, generate: Generate) -> TaskState:
+        content = state.output.completion
+        if not content:
+            return state
+
+        # Extract reasoning from <reasoning> tags if present
+        reasoning_match = re.search(r'<reasoning>(.*?)</reasoning>', content, re.DOTALL)
+        reasoning = reasoning_match.group(1).strip() if reasoning_match else content.strip()
+
+        if not reasoning:
+            return state
+
+        grader = get_model(grader_model)
+        failed_stanzas = []
+
+        # Split into stanzas by double newlines
+        stanzas = re.split(r'\n\s*\n', reasoning)
+
+        for i, stanza in enumerate(stanzas):
+            stanza = stanza.strip()
+            lines = [l.strip() for l in stanza.split('\n') if l.strip()]
+            if len(lines) < 2:
+                continue
+
+            # Extract last word from each line
+            last_words = [extract_last_word(line) for line in lines]
+            last_words = [w for w in last_words if w]  # filter None
+
+            if len(last_words) < 2:
+                continue
+
+            words_str = ", ".join(last_words)
+            prompt = RHYME_STANZA_PROMPT.format(stanza=stanza, words=words_str)
+            result = await grader.generate([ChatMessageUser(content=prompt)])
+            response = result.completion.strip()
+
+            # Search from last line backwards for YES/NO
+            resp_lines = response.split('\n')
+            stanza_valid = False
+            for line in reversed(resp_lines):
+                line_upper = line.strip().upper()
+                has_yes = "YES" in line_upper
+                has_no = "NO" in line_upper
+                if has_yes or has_no:
+                    stanza_valid = has_yes and not has_no
+                    break
+
+            if not stanza_valid:
+                failed_stanzas.append((i + 1, last_words, response))
+
+        rhyme_valid = len(failed_stanzas) == 0
+
+        # Store result in metadata
+        state.metadata["rhyme_check_passed"] = rhyme_valid
+        state.metadata["rhyme_check_response"] = str(failed_stanzas) if failed_stanzas else "all stanzas rhyme"
+
+        if not rhyme_valid:
+            state.output.completion = "<answer>RHYME_CHECK_FAILED</answer>"
 
         return state
 
@@ -171,6 +277,7 @@ def build_task(
     two_stage: bool = False,
     strip_reasoning: bool = False,
     name: str | None = None,
+    skip_ids: set[str] | None = None,
     enforce_constraint: bool = True,
 ) -> Task:
     """Build a single evaluation task.
@@ -184,9 +291,10 @@ def build_task(
         repeat_input: Number of times to repeat the question in the prompt (single-stage only)
         filler_tokens: Number of filler tokens (periods) to add to the assistant message (single-stage only)
         two_stage: If True, use two-stage evaluation (reason first, then answer)
-        strip_reasoning: If True (requires two_stage), strip non-emoji characters from
-                         reasoning before generating the final answer
+        strip_reasoning: If True (requires two_stage), strip reasoning to only allowed
+                         content based on the constraint (uses strip_function or allowed_patterns)
         name: Name for this task. Defaults to '{constraint}_{dataset}'
+        skip_ids: Set of sample IDs to skip (for retrying incomplete evals)
 
     Returns:
         Inspect Task
@@ -194,7 +302,19 @@ def build_task(
     if strip_reasoning and not two_stage:
         raise ValueError("strip_reasoning requires two_stage=True")
 
-    dataset = load_dataset(dataset_name, shuffle=True, seed=seed)
+    if constraint_name == "only_rhymes" and two_stage:
+        raise ValueError("only_rhymes constraint requires single-stage evaluation (two_stage=False)")
+
+    # Validate that constraint supports stripping if strip_reasoning is requested
+    if strip_reasoning:
+        constraint = get_constraint(constraint_name)
+        if constraint.strip_function is None and constraint.allowed_patterns is None:
+            raise ValueError(
+                f"strip_reasoning requires constraint '{constraint_name}' to have "
+                "strip_function or allowed_patterns defined"
+            )
+
+    dataset = load_dataset(dataset_name, shuffle=True, seed=seed, skip_ids=skip_ids)
     scorer_fn = get_scorer(dataset_name)
 
     # Wrap scorer if strict enforcement is requested (post-hoc, prompt-based)
@@ -221,9 +341,9 @@ def build_task(
             generate(),
         ]
 
-        # Optionally strip non-emoji characters from reasoning
+        # Optionally strip reasoning to only allowed content
         if strip_reasoning:
-            solvers.append(strip_non_emoji_from_reasoning())
+            solvers.append(strip_reasoning_solver(constraint_name))
 
         solvers.extend(
             [
@@ -259,6 +379,10 @@ def build_task(
             solvers.append(filler_tokens_solver(filler_tokens, suffix=suffix))
 
         solvers.append(generate())
+
+        # For rhyme constraint, check scheme after generation and invalidate if failed
+        if constraint_name == "only_rhymes":
+            solvers.append(check_rhyme_scheme())
 
     return Task(
         name=task_name,
@@ -311,7 +435,8 @@ def run_eval(
     use_logit_mask: bool = False,
     log_dir: str | None = None,
     reasoning_effort: str | None = None,
-    max_connections: int | None = None,
+    skip_ids: set[str] | None = None,
+    max_connections: int | None = None
     enforce_constraint: bool = True,
 ):
     """Run an evaluation with a specified constraint.
@@ -328,8 +453,8 @@ def run_eval(
         repeat_input: Number of times to repeat the question in the prompt (single-stage only)
         filler_tokens: Number of filler tokens (periods) to add to the assistant message (single-stage only)
         two_stage: If True, use two-stage evaluation (reason first, then answer)
-        strip_reasoning: If True (requires two_stage), strip non-emoji characters from
-                         reasoning before generating the final answer
+        strip_reasoning: If True (requires two_stage), strip reasoning to only allowed
+                         content based on the constraint (uses strip_function or allowed_patterns)
         name: Name for eval run. Defaults to '{constraint}_{dataset}'
         reasoning_effort: the reasoning effort option for OpenAI models. Defaults to None. Can be set to strings 'none' 'low' 'medium' 'high' 'xhigh'
         max_connections: number of API calls to simultaneously make. Defaults to None, which Inspect defaults as 10.
@@ -347,6 +472,7 @@ def run_eval(
         two_stage=two_stage,
         strip_reasoning=strip_reasoning,
         name=name,
+        skip_ids=skip_ids,
         enforce_constraint=enforce_constraint,
     )
 
@@ -372,7 +498,7 @@ def run_eval(
 
     # Disable reasoning for no_cot constraint, emoji-only, or when stripping reasoning
     # (for OpenAI reasoning models like o1, o3, gpt-5.2)
-    if constraint_name in {"no_cot", "only_emojis"} or strip_reasoning:
+    if constraint_name in {"no_cot", "only_emojis", "only_rhymes"} or strip_reasoning:
         eval_kwargs["reasoning_effort"] = "none"
 
     results = inspect_eval(task, **eval_kwargs)

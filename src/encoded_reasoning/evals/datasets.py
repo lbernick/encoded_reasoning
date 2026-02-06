@@ -663,6 +663,7 @@ def load_dataset(
     split: str | None = None,
     shuffle: bool = True,
     seed: int = 42,
+    skip_ids: set[str] | None = None,
 ) -> Dataset:
     """Load a dataset by name using Inspect's hf_dataset or custom loader.
 
@@ -671,6 +672,7 @@ def load_dataset(
         split: Override the default split
         shuffle: Whether to shuffle the dataset
         seed: Random seed for shuffling
+        skip_ids: Set of sample IDs to skip (for retrying incomplete evals)
 
     Returns:
         Inspect Dataset ready for use in a Task
@@ -715,6 +717,9 @@ def load_dataset(
             random.seed(seed)
             random.shuffle(samples)
 
+        if skip_ids:
+            samples = [s for s in samples if s.id not in skip_ids]
+
         return MemoryDataset(samples)
 
     if "json_url" in recipe:
@@ -737,6 +742,9 @@ def load_dataset(
             random.seed(seed)
             random.shuffle(samples)
 
+        if skip_ids:
+            samples = [s for s in samples if s.id not in skip_ids]
+
         return MemoryDataset(samples)
 
     if "parquet_url" in recipe:
@@ -747,6 +755,9 @@ def load_dataset(
         if shuffle:
             random.seed(seed)
             random.shuffle(samples)
+
+        if skip_ids:
+            samples = [s for s in samples if s.id not in skip_ids]
 
         return MemoryDataset(samples)
 
@@ -761,6 +772,12 @@ def load_dataset(
     )
     if "filter_func" in recipe:
         ds = ds.filter(recipe["filter_func"])
+
+    if skip_ids:
+        samples = [s for s in ds]
+        samples = [s for s in samples if s.id not in skip_ids]
+        return MemoryDataset(samples)
+
     return ds
 
 

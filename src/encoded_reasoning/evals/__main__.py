@@ -15,10 +15,12 @@ Usage:
 
 import argparse
 import os
+from pathlib import Path
 
-from .runner import run_eval
+from .runner import run_eval, LOG_DIR
 from .datasets import DATASETS
 from .constraints import CONSTRAINTS
+from .retry_utils import update_log_max_tokens, get_retry_info, merge_eval_logs
 
 
 def short_model_name(model: str) -> str:
@@ -98,6 +100,7 @@ def main():
     parser.add_argument(
         "--two-stage",
         action="store_true",
+        default=os.environ.get("TWO_STAGE", "").lower() in ("true", "1"),
         help="Use two-stage evaluation: reason first (without answer), then answer",
     )
     parser.add_argument(
@@ -115,7 +118,8 @@ def main():
     parser.add_argument(
         "--strip-reasoning",
         action="store_true",
-        help="Strip non-emoji characters from reasoning before final answer (requires --two-stage)",
+        default=os.environ.get("STRIP_REASONING", "").lower() in ("true", "1"),
+        help="Strip reasoning to only allowed content based on constraint before final answer (requires --two-stage)",
     )
     parser.add_argument(
         "--log-dir",
@@ -129,6 +133,12 @@ def main():
         default=None,
         help="Reasoning effort for OpenAI models. Defaults to None. Can be set to values 'none' 'low' 'medium' 'high' 'xhigh'",
     )
+    parser.add_argument(
+        "--retry",
+        type=str,
+        default=os.environ.get("RETRY_LOG"),
+        help="Path to a log file to retry. Resumes incomplete samples from a crashed eval.")
+    
     parser.add_argument(
         "--max-connections",
         type=int,
@@ -144,6 +154,54 @@ def main():
     parser.set_defaults(enforce_constraint=True)
 
     args = parser.parse_args()
+
+    # Handle retry mode
+    if args.retry:
+        retry_path = Path(args.retry)
+        # If path doesn't exist, try looking in default log directory
+        if not retry_path.exists():
+            retry_path = LOG_DIR / args.retry
+        if not retry_path.exists():
+            parser.error(f"Log file not found: {args.retry} (also checked {LOG_DIR})")
+
+        info = get_retry_info(str(retry_path))
+        skip_ids = info['completed_ids']
+        metadata = info['metadata']
+
+        print(f"Retrying eval from: {retry_path}")
+        print(f"  Completed: {info['completed_count']}/{info['total_samples']} samples")
+        print(f"  Skipping {len(skip_ids)} completed samples")
+
+        # Use metadata from log, allow CLI overrides
+        results = run_eval(
+            constraint_name=metadata.get('constraint') or args.constraint,
+            model=args.model,
+            dataset_name=metadata.get('dataset') or args.dataset,
+            n_samples=None,  # Run all remaining
+            seed=metadata.get('seed', args.seed),
+            max_tokens=args.max_tokens,
+            skip_ids=skip_ids,
+            log_dir=args.log_dir,
+        )
+
+        # Merge retry results back into original log
+        if results and len(results) > 0:
+            retry_log_path = results[0].location
+            if retry_log_path:
+                merged_path = merge_eval_logs(str(retry_path), retry_log_path)
+                print(f"\nMerged results saved to: {merged_path}")
+
+                # Print merged stats
+                from .retry_utils import read_eval_log
+                merged = read_eval_log(merged_path)
+                merged_results = merged.get('results', {})
+                for score in merged_results.get('scores', []):
+                    metrics = score.get('metrics', {})
+                    acc = metrics.get('accuracy', {}).get('value', 0)
+                    stderr = metrics.get('stderr', {}).get('value', 0)
+                    print(f"  {score.get('name')}: {acc:.3f} ± {stderr:.3f}")
+
+        return results
 
     # Validate: single-stage requires constraint
     if not args.two_stage and not args.constraint:
