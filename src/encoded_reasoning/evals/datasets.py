@@ -28,6 +28,8 @@ from inspect_ai.dataset import Sample, hf_dataset, Dataset, MemoryDataset
 from inspect_ai.scorer import Scorer, Score, Target, accuracy, stderr, scorer
 from inspect_ai.solver import TaskState
 
+from .constraints import get_constraint
+
 load_dotenv()
 # Letters for multiple choice options
 ANSWER_LETTERS = ["A", "B", "C", "D"]
@@ -136,6 +138,68 @@ def extract_number_answer(text: str) -> str | None:
         return match.group(1).replace(",", "")
 
     return None
+
+
+# ============ Constraint Enforcement Wrapper ============
+
+import regex
+
+REASONING_RE = regex.compile(r"<reasoning>(.*?)</reasoning>", regex.DOTALL | regex.IGNORECASE)
+
+
+def extract_reasoning_block(text: str) -> str | None:
+    match = REASONING_RE.search(text)
+    if not match:
+        return None
+    return match.group(1).strip()
+
+
+def wrap_with_constraint(base_scorer_fn, constraint_name: str, enforce: bool = False):
+    """Wrap a base scorer to also enforce the reasoning constraint.
+
+    Enforcement rules:
+    - Only runs when `enforce` is True.
+    - Only applies to constraints that expect reasoning and define a reward_function.
+    - Samples fail if no <reasoning> block is present or compliance < pass_threshold.
+    """
+
+    constraint = get_constraint(constraint_name)
+    base_scorer = base_scorer_fn()
+    # Pull metrics from the scorer's registry info (where the @scorer decorator stores them)
+    base_registry_info = getattr(base_scorer, "__registry_info__", None)
+    base_metrics = base_registry_info.metadata.get("metrics") if base_registry_info else None
+    if base_metrics is None:
+        base_metrics = []
+
+    @scorer(metrics=base_metrics)
+    def constrained_scorer():
+        async def score(state: TaskState, target: Target) -> Score:
+            base = await base_scorer(state, target)
+
+            if not enforce or not constraint.expects_reasoning or constraint.reward_function is None:
+                return base
+
+            reasoning = extract_reasoning_block(state.output.completion or "")
+            if not reasoning:
+                return Score(
+                    value=False,
+                    answer=base.answer,
+                    explanation=f"{base.explanation}; missing <reasoning> block",
+                )
+
+            compliance = constraint.reward_function(reasoning)
+            threshold = getattr(constraint, "pass_threshold", 1.0)
+            ok = compliance >= threshold
+
+            return Score(
+                value=base.value and ok,
+                answer=base.answer,
+                explanation=f"{base.explanation}; reasoning_compliance={compliance:.3f} (≥ {threshold})",
+            )
+
+        return score
+
+    return constrained_scorer
 
 
 @scorer(metrics=[accuracy(), stderr()])

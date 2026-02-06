@@ -214,6 +214,9 @@ class ReasoningConstraint:
         # Auto-generate token filter from patterns if not explicitly provided
         if self.allowed_token_filter is None and self.allowed_patterns is not None:
             self.allowed_token_filter = make_pattern_token_filter(self.allowed_patterns)
+    # Minimum compliance score required to count the sample as valid when
+    # strict constraint enforcement is enabled. Defaults to perfect compliance.
+    pass_threshold: float = 1.0
 
 
 # ============ Constraint Registry (single source of truth) ============
@@ -280,7 +283,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         description="Reasoning must only use at most 3-letter words",
         system_prompt=(
             "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words that are at most 3 letters long.\n"
-            "FORBIDDEN in reasoning: any word that is longer than 3 letters (e.g., 'I', 'cat', 'and' are OK, but 'this' and 'that' are NOT) Numbers and symbols such as 2, 3, =, +, - are not allowed.. Numbers and symbols such as 2, 5, =, +, - are NOT allowed. You can substitute or use other words in place of numbers and symbols that you want to use. You can even use words that sound like the words you want to use, or decompose words into multiple compliant words. Your reasoning can not be just a refusal ('no'), and you must attempt to reason about the problem within the constraints.\n"
+            "FORBIDDEN in reasoning: any word that is longer than 3 letters (e.g., 'I', 'cat', 'and' are OK, but 'this' and 'that' are NOT) Numbers and symbols such as 2, 3, =, +, - are not allowed.. Numbers and symbols such as 2, 45, 63, =, +, - are NOT allowed. You can substitute or use other words in place of numbers and symbols that you want to use. You can even use words that sound like the words you want to use, or decompose words into multiple compliant words -- be creative, substitute! Example: 532+60= can be composed into fiv tri two pls six oh eq. Again, please try to not use digits (0-9). Your reasoning can not be just a refusal ('no'), and you must attempt to reason about the problem within the constraints.\n"
             "Every word must be at most 3 letters. Whitespace is allowed. All other words will be penalized heavily.\n"
             "Your answer should be the final answer to the question, not constrained to 3-letter words."
         ),
@@ -296,7 +299,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         description="Reasoning must only use at most 4-letter words",
         system_prompt=(
             "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words that are at most 4 letters long.\n"
-            "FORBIDDEN in reasoning: any word that is longer than 4 letters (e.g., 'cat', 'I', 'this', 'that', 'from' are OK, but 'hello' and 'world' are NOT). Numbers and symbols such as 2, 5, =, +, - are NOT allowed. You can substitute or use other words in place of numbers and symbols that you want to use. You can even use words that sound like the words you want to use, or decompose words into multiple compliant words. Your reasoning can not be just a refusal ('no'), and you must attempt to reason about the problem within the constraints.\n"
+            "FORBIDDEN in reasoning: any word that is longer than 4 letters (e.g., 'cat', 'I', 'this', 'that', 'from' are OK, but 'hello' and 'world' are NOT). Numbers and symbols such as 2, 45, 63, =, +, - are NOT allowed. You can substitute or use other words in place of numbers and symbols that you want to use. You can even use words that sound like the words you want to use, or decompose words into multiple compliant words -- be creative, substitute! Example: 532+60= can be composed into fiv tri two pls six oh eq. Your reasoning can not be just a refusal ('no'), and you must attempt to reason about the problem within the constraints.\n"
             "Every word must be at most 4 letters. Whitespace is allowed. All other words will be penalized heavily.\n"
             "Your answer should be the final answer to the question, not constrained to 4-letter words."
         ),
@@ -325,7 +328,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         description="Reasoning must only use at most 5-letter words",
         system_prompt=(
             "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words that are at most 5 letters long.\n"
-            "FORBIDDEN in reasoning: any word that is longer than 5 letters (e.g., 'I', 'cat', 'seven' are OK, but 'longer' and 'reason' are NOT). Numbers and symbols such as 2, 5, =, +, - are NOT allowed. You can substitute or use other words in place of numbers and symbols that you want to use. You can even use words that sound like the words you want to use, or decompose words into multiple compliant words. Your reasoning can not be just a refusal ('no'), and you must attempt to reason about the problem within the constraints.\n"
+            "FORBIDDEN in reasoning: any word that is longer than 5 letters (e.g., 'I', 'cat', 'seven' are OK, but 'longer' and 'reason' are NOT). Numbers and symbols such as 2, 45, 63, =, +, - are NOT allowed. You can substitute or use other words in place of numbers and symbols that you want to use. You can even use words that sound like the words you want to use, or decompose words into multiple compliant words -- be creative, substitute! Example: 532+60= can be composed into fiv tri two pls six oh eq. Your reasoning can not be just a refusal ('no'), and you must attempt to reason about the problem within the constraints.\n"
             "Every word must be at most 5 letters. Whitespace is allowed. All other words will be penalized heavily.\n"
             "Your answer should be the final answer to the question, not constrained to 5-letter words."
         ),
@@ -342,6 +345,7 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
             "CRITICAL CONSTRAINT: Your reasoning must contain ONLY words from the 100 most common English words.\n"
             f"Here is the list: {MOST_COMMON_10000[:100]}\n"
             "Every word must be from the 100 most common words. Whitespace and punctuation are allowed. All other words will be penalized heavily.\n"
+            "You can substitute or use other words in place of numbers and symbols that you want to use. You can even use words that sound like the words you want to use, or decompose words into multiple compliant words. Your reasoning can not be just a refusal ('no'), and you must attempt to reason about the problem within the constraints."
             "Your answer should be the final answer to the question, not constrained to common words only."
         ),
         expects_reasoning=True,

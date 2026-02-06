@@ -14,8 +14,8 @@ import argparse
 import torch
 from transformers import LogitsProcessorList
 
-from logit_masking.processor import MaskedReasoningProcessor, load_model
-from evals.token_filters import emoji_token_filter
+from .processor import MaskedReasoningProcessor, load_model
+from ..evals.token_filters import emoji_token_filter
 
 
 def main():

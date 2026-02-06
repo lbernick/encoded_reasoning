@@ -145,6 +145,13 @@ def main():
         default=None,
         help="Max number of simultaneous API calls to make. Default is none, which Inspect defaults as 10."
     )
+    parser.add_argument(
+        "--no-enforce-constraint",
+        action="store_false",
+        dest="enforce_constraint",
+        help="Disable post-hoc enforcement of reasoning constraints.",
+    )
+    parser.set_defaults(enforce_constraint=True)
 
     args = parser.parse_args()
 
@@ -246,6 +253,7 @@ def main():
     if args.reasoning_effort:
         print(f"Reasoning Effort: {args.reasoning_effort}")
     print(f"Max Connections: {args.max_connections}")
+    print(f"Enforce Constraint: {args.enforce_constraint}")
     print()
 
     results = run_eval(
@@ -266,6 +274,7 @@ def main():
         log_dir=args.log_dir,
         reasoning_effort=args.reasoning_effort,
         max_connections=args.max_connections,
+        enforce_constraint=args.enforce_constraint,
     )
 
     return results
