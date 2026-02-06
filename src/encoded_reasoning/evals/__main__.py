@@ -151,7 +151,7 @@ def main():
         dest="enforce_constraint",
         help="Disable post-hoc enforcement of reasoning constraints.",
     )
-    parser.set_defaults(enforce_constraint=True)
+    parser.set_defaults(enforce_constraint=os.environ.get("ENFORCE_CONSTRAINT", "true").lower() in ("true", "1"))
 
     args = parser.parse_args()
 
