@@ -267,9 +267,8 @@ CONSTRAINTS: dict[str, ReasoningConstraint] = {
         name="only_numbers",
         description="Reasoning must only use numbers",
         system_prompt=(
-            "This is a test of numerical communication. You can write whatever you want, but only the numbers will be passed forward to the answer stage.\n"
-            "Include all the numbers you need to solve the problem.\n"
-            "Your answer can contain normal text."
+            "This is a test of numerical communication. Only the numbers will be given when determining the answer.\n"
+            "Include all the numbers you need to solve the problem. Avoid using letters and symbols and provide just the numbers. \n"
         ),
         expects_reasoning=True,
         reasoning_example="I'll track: items, rate, total. 5 10 50 3 150",
