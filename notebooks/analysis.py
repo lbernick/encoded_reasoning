@@ -35,7 +35,6 @@ GSM8K_EVAL_FILES: dict[str, tuple[str, str]] = {
     "gpt52": ("gpt52/gpt52-gsm8k-cot-subset.eval", "gpt52/gpt52-gsm8k-repeat1-subset.eval"),
     "opus4.5": ("opus4.5-gsm8k-cot-subset.eval", "opus4.5-gsm8k-no-cot-subset.eval"),
     "qwen2.5-7b": ("qwen2.5-7b-gsm8k-cot-subset.eval", "qwen2.5-7b-gsm8k-repeat1-subset.eval"),
-    "qwen14b": ("qwen14b-gsm8k-cot-subset.eval", "qwen14b-gsm8k-no-cot-subset.eval"),
 }
 
 gsm8k_by_model: dict[str, dict[str, pd.DataFrame]] = {}
@@ -74,13 +73,17 @@ for model, dfs in gsm8k_by_model.items():
 if models:
     x = range(len(models))
     width = 0.6
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(6, 6))
     from matplotlib.patches import Patch
+    from matplotlib.colors import to_rgb
 
     for i, model in enumerate(models):
         c = model_color(model)
-        ax.bar(i, non_reasoning_acc[i], width, color=c, edgecolor="gray", alpha=0.85)
-        ax.bar(i, gain_acc[i], width, bottom=non_reasoning_acc[i], color=c, edgecolor="gray")
+        # Bottom segment (non-reasoning): light tint; top (gain): full color — so splits are distinct
+        rgb = to_rgb(c)
+        light = tuple(0.55 + 0.45 * x for x in rgb)
+        ax.bar(i, non_reasoning_acc[i], width, color=light, edgecolor="gray", linewidth=0.8)
+        ax.bar(i, gain_acc[i], width, bottom=non_reasoning_acc[i], color=c, edgecolor="gray", linewidth=0.8)
     ax.legend(handles=[Patch(facecolor=model_color(m), edgecolor="gray", label=m) for m in models], loc="upper right")
     ax.set_xticks(x)
     ax.set_xticklabels(models, rotation=20, ha="right")
@@ -102,6 +105,44 @@ def prop_recovered(
     if gap <= 0:
         return 0.0
     return (intervention_prop - no_reasoning_prop) / gap
+
+
+def bootstrap_recovery_95ci(
+    merged: pd.DataFrame,
+    cot_col: str,
+    no_cot_col: str,
+    repeat_cols: dict[int, str],
+    n_boot: int = 2000,
+    seed: int = 42,
+) -> dict[int, tuple[float, float]]:
+    """
+    Bootstrap 95% CI for recovery at each repeat (paired resample of rows).
+    merged has one row per sample with columns cot_col, no_cot_col, and repeat_cols values.
+    Returns dict n_repeat -> (ci_low, ci_high).
+    """
+    rng = np.random.default_rng(seed)
+    n = len(merged)
+    if n == 0:
+        return {k: (np.nan, np.nan) for k in repeat_cols}
+
+    boot_recovery: dict[int, list[float]] = {k: [] for k in repeat_cols}
+    for _ in range(n_boot):
+        idx = rng.integers(0, n, size=n)
+        sub = merged.iloc[idx]
+        cot_acc = float(sub[cot_col].mean())
+        no_cot_acc = float(sub[no_cot_col].mean())
+        for n_rep, col in repeat_cols.items():
+            acc = float(sub[col].mean())
+            rec = prop_recovered(acc, cot_acc, no_cot_acc)
+            boot_recovery[n_rep].append(rec)
+
+    return {
+        n_rep: (
+            float(np.percentile(vals, 2.5)),
+            float(np.percentile(vals, 97.5)),
+        )
+        for n_rep, vals in boot_recovery.items()
+    }
 
 
 def recovery_by_intervention(
@@ -176,12 +217,37 @@ def load_gsm8k_accuracy(eval_path: Path) -> float:
     return float(df["score_gsm8k_scorer"].mean())
 
 
+def load_gsm8k_correct_df(eval_path: Path) -> pd.DataFrame:
+    """Return DataFrame with sample_id and correct (0/1) for bootstrap."""
+    df = samples_df(logs=str(eval_path), quiet=True)
+    if "score_gsm8k_scorer" not in df.columns:
+        raise ValueError(f"Missing score_gsm8k_scorer in {eval_path}")
+    out = df[["sample_id", "score_gsm8k_scorer"]].rename(
+        columns={"score_gsm8k_scorer": "correct"}
+    )
+    # Normalize so merges across evals match (int vs str would drop rows)
+    out["sample_id"] = out["sample_id"].astype(str)
+    return out
+
+
 def load_morehopqa_accuracy(eval_path: Path) -> float:
     """Return mean accuracy from a MoreHopQA eval file."""
     df = samples_df(logs=str(eval_path), quiet=True)
     if "score_morehopqa_scorer" not in df.columns:
         raise ValueError(f"Missing score_morehopqa_scorer in {eval_path}")
     return float(df["score_morehopqa_scorer"].mean())
+
+
+def load_morehopqa_correct_df(eval_path: Path) -> pd.DataFrame:
+    """Return DataFrame with sample_id and correct (0/1) for bootstrap (Opus / samples_df evals)."""
+    df = samples_df(logs=str(eval_path), quiet=True)
+    if "score_morehopqa_scorer" not in df.columns:
+        raise ValueError(f"Missing score_morehopqa_scorer in {eval_path}")
+    out = df[["sample_id", "score_morehopqa_scorer"]].rename(
+        columns={"score_morehopqa_scorer": "correct"}
+    )
+    out["sample_id"] = out["sample_id"].astype(str)
+    return out
 
 
 def load_morehopqa_df(eval_path: Path) -> pd.DataFrame:
@@ -252,8 +318,9 @@ QWEN27B_REPEATS: dict[int, str] = {
     10: "qwen2.5-7b-gsm8k-repeat10-subset",
 }
 
-# Load data for each model
+# Load data for each model; build per-sample merged df for bootstrap 95% CIs
 repeat_recovery: dict[str, dict[int, float]] = {}  # model -> {n_repeats: recovery}
+repeat_recovery_ci: dict[str, dict[int, tuple[float, float]]] = {}  # model -> {n_repeats: (lo, hi)}
 
 for model_label, log_dir, cot_pattern, repeat_patterns in [
     ("GPT-5.2", GPT52_DIR, GPT52_COT_PATTERN, GPT52_REPEATS),
@@ -265,6 +332,7 @@ for model_label, log_dir, cot_pattern, repeat_patterns in [
         print(f"WARNING: CoT baseline not found for {model_label} (pattern={cot_pattern})")
         continue
     cot_acc = load_gsm8k_accuracy(cot_path)
+    cot_df = load_gsm8k_correct_df(cot_path).rename(columns={"correct": "cot"})[["sample_id", "cot"]]
 
     # Repeat-1 is the no-reasoning floor
     r1_path = find_eval_file(log_dir, repeat_patterns[1])
@@ -272,10 +340,15 @@ for model_label, log_dir, cot_pattern, repeat_patterns in [
         print(f"WARNING: Repeat-1 file not found for {model_label}")
         continue
     no_cot_acc = load_gsm8k_accuracy(r1_path)
+    no_cot_df = load_gsm8k_correct_df(r1_path).rename(columns={"correct": "no_cot"})[["sample_id", "no_cot"]]
 
     print(f"{model_label}: CoT={cot_acc:.3f}, no-CoT={no_cot_acc:.3f}")
 
     recoveries: dict[int, float] = {}
+    repeat_cols: dict[int, str] = {}  # n_repeat -> column name in merged
+    rep_dfs: dict[int, pd.DataFrame] = {}  # for fallback when merge yields 0 rows
+    merged = cot_df.merge(no_cot_df, on="sample_id", how="inner")
+
     for n_repeat, pattern in repeat_patterns.items():
         path = find_eval_file(log_dir, pattern)
         if path is None:
@@ -286,22 +359,90 @@ for model_label, log_dir, cot_pattern, repeat_patterns in [
         recoveries[n_repeat] = rec
         print(f"  repeat {n_repeat}: acc={acc:.3f}, recovery={rec:.3f}")
 
+        col = f"r{n_repeat}"
+        repeat_cols[n_repeat] = col
+        rep_df = load_gsm8k_correct_df(path).rename(columns={"correct": col})[["sample_id", col]]
+        rep_dfs[n_repeat] = rep_df
+        merged = merged.merge(rep_df, on="sample_id", how="inner")
+
+    # If merge by sample_id yielded 0 rows (e.g. different id format across evals), align by row order
+    if recoveries and len(merged) == 0 and repeat_cols and rep_dfs:
+        cot_s = cot_df.sort_values("sample_id").reset_index(drop=True)
+        no_cot_s = no_cot_df.sort_values("sample_id").reset_index(drop=True)
+        n_align = min(len(cot_s), len(no_cot_s), *[len(rep_dfs[k]) for k in repeat_cols])
+        cot_s = cot_s.iloc[:n_align]
+        no_cot_s = no_cot_s.iloc[:n_align]
+        merged = pd.DataFrame({
+            "cot": cot_s["cot"].values,
+            "no_cot": no_cot_s["no_cot"].values,
+        })
+        for n_rep, col in repeat_cols.items():
+            rep_sorted = rep_dfs[n_rep].sort_values("sample_id").reset_index(drop=True).iloc[:n_align]
+            merged[col] = rep_sorted[col].values
+        print(f"  (aligned by row order, n={len(merged)} — sample_id merge had 0 rows)")
+
     if recoveries:
         repeat_recovery[model_label] = recoveries
+        if repeat_cols and len(merged) > 0:
+            repeat_recovery_ci[model_label] = bootstrap_recovery_95ci(
+                merged, "cot", "no_cot", repeat_cols
+            )
+            print(f"  merged n={len(merged)}, 95% CI:")
+            for n_rep in sorted(repeat_recovery_ci[model_label].keys()):
+                lo, hi = repeat_recovery_ci[model_label][n_rep]
+                print(f"    repeat {n_rep}: [{lo:.3f}, {hi:.3f}]")
+        else:
+            repeat_recovery_ci[model_label] = {k: (np.nan, np.nan) for k in recoveries}
+            print(f"  WARNING: no merged rows (n={len(merged)}), CIs set to NaN")
 
 # %%
-# Plot: recovery vs number of repeats for each model
+# Plot: recovery vs number of repeats for each model (with bootstrap 95% CIs)
 if repeat_recovery:
+    # Check CIs are present and finite (warn only so plot still runs)
+    if len(repeat_recovery_ci) != len(repeat_recovery):
+        print(f"WARNING: repeat_recovery_ci has {len(repeat_recovery_ci)} models, repeat_recovery has {len(repeat_recovery)}")
+    for model_label in repeat_recovery:
+        ci = repeat_recovery_ci.get(model_label, {})
+        if not ci:
+            print(f"WARNING: No CIs for model {model_label}")
+        else:
+            finite = [(k, lo, hi) for k, (lo, hi) in ci.items() if np.isfinite(lo) and np.isfinite(hi)]
+            if not finite:
+                print(f"WARNING: All CIs are NaN for model {model_label} (merge had 0 rows and fallback may not have run)")
+
+    # Text summary of CIs before the plot
+    print("Recovery by prompt copies — point estimates and 95% bootstrap CI:")
+    for model_label in repeat_recovery:
+        recoveries = repeat_recovery[model_label]
+        ci = repeat_recovery_ci.get(model_label, {})
+        xs = sorted(recoveries.keys())
+        print(f"  {model_label}:")
+        for x in xs:
+            rec = recoveries[x]
+            lo, hi = ci.get(x, (np.nan, np.nan))
+            if np.isfinite(lo) and np.isfinite(hi):
+                print(f"    copies={x}: recovery={rec:.3f}  [95% CI: {lo:.3f}, {hi:.3f}]")
+            else:
+                print(f"    copies={x}: recovery={rec:.3f}  [95% CI: (no data)]")
+
     fig, ax = plt.subplots(figsize=(8, 5))
     markers = {"GPT-5.2": "o", "Opus 4.5": "s", "Qwen 2.5 7B": "D"}
 
     for model_label, recoveries in repeat_recovery.items():
-        xs = sorted(recoveries.keys())
+        xs = np.array(sorted(recoveries.keys()), dtype=float)
         ys = [recoveries[x] for x in xs]
+        ci = repeat_recovery_ci.get(model_label, {})
+        ci_lo = np.array([ci.get(x, (np.nan, np.nan))[0] for x in xs])
+        ci_hi = np.array([ci.get(x, (np.nan, np.nan))[1] for x in xs])
+        color = model_color(model_label)
+        # Draw 95% CI band first so line is on top
+        has_ci = np.isfinite(ci_lo).any() and np.isfinite(ci_hi).any()
+        if has_ci:
+            ax.fill_between(xs, ci_lo, ci_hi, color=color, alpha=0.35)
         ax.plot(
             xs, ys,
             marker=markers.get(model_label, "^"),
-            color=model_color(model_label),
+            color=color,
             label=model_label,
             linewidth=2,
             markersize=8,
@@ -309,7 +450,7 @@ if repeat_recovery:
 
     ax.set_xlabel("Number of prompt copies")
     ax.set_ylabel("Recovery (prop. of CoT–no-CoT gap)")
-    ax.set_title("Recovery by Prompt Copies (GSM8K, n=200)")
+    ax.set_title("Recovery by Prompt Copies (GSM8K, n=200, 95% bootstrap CI)")
     ax.set_ylim(-0.05, 1.1)
     # 0 and 1.0: dotted/dashed only, no solid major grid behind them
     ax.axhline(y=1.0, color="gray", linestyle="--", alpha=0.5, label="Full recovery")
@@ -373,7 +514,57 @@ OPUS_MOREHOP_REPEATS: dict[int, str] = {
     10: "opus4.5-morehopqa-repeat10-subset",
 }
 
+# %%
+# Stacked bar: MoreHopQA reasoning vs non-reasoning accuracy by model (same style as GSM8K)
+models_morehop: list[str] = []
+non_reasoning_acc_m: list[float] = []
+gain_acc_m: list[float] = []
+for model_label, log_dir, cot_pattern, no_cot_pattern in [
+    ("GPT-5.2", GPT52_DIR, GPT52_MOREHOP_COT, GPT52_MOREHOP_REPEATS[1]),
+    ("Opus 4.5", OPUS_DIR, OPUS_MOREHOP_COT, OPUS_MOREHOP_REPEATS[1]),
+]:
+    cot_path = find_eval_file(log_dir, cot_pattern)
+    no_cot_path = find_eval_file(log_dir, no_cot_pattern)
+    if cot_path is None or no_cot_path is None:
+        print(f"WARNING: MoreHopQA eval not found for {model_label}, skipping overall plot.")
+        continue
+    r_acc = load_morehopqa_accuracy(cot_path)
+    n_acc = load_morehopqa_accuracy(no_cot_path)
+    models_morehop.append(model_label)
+    non_reasoning_acc_m.append(n_acc)
+    gain_acc_m.append(max(0.0, r_acc - n_acc))
+
+if models_morehop:
+    x_m = range(len(models_morehop))
+    width = 0.6
+    fig_m, ax_m = plt.subplots(figsize=(6, 6))
+    from matplotlib.patches import Patch
+    from matplotlib.colors import to_rgb
+
+    for i, model_label in enumerate(models_morehop):
+        c = model_color(model_label)
+        rgb = to_rgb(c)
+        light = tuple(0.55 + 0.45 * x for x in rgb)
+        ax_m.bar(i, non_reasoning_acc_m[i], width, color=light, edgecolor="gray", linewidth=0.8)
+        ax_m.bar(i, gain_acc_m[i], width, bottom=non_reasoning_acc_m[i], color=c, edgecolor="gray", linewidth=0.8)
+    ax_m.legend(
+        handles=[Patch(facecolor=model_color(m), edgecolor="gray", label=m) for m in models_morehop],
+        loc="upper right",
+    )
+    ax_m.set_xticks(x_m)
+    ax_m.set_xticklabels(models_morehop, rotation=20, ha="right")
+    ax_m.set_ylabel("Accuracy")
+    ax_m.set_xlabel("Model")
+    ax_m.set_title("MoreHopQA: Reasoning vs non-reasoning accuracy by model")
+    ax_m.set_ylim(0, 1.05)
+    ax_m.grid(axis="y", alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(SPECIAL_LOGS.parent / "morehopqa_reasoning_vs_non_reasoning.png", dpi=150, bbox_inches="tight")
+    plt.show()
+
+# %%
 repeat_recovery_morehop: dict[str, dict[int, float]] = {}
+repeat_recovery_morehop_ci: dict[str, dict[int, tuple[float, float]]] = {}
 
 for model_label, log_dir, cot_pattern, repeat_patterns in [
     ("GPT-5.2", GPT52_DIR, GPT52_MOREHOP_COT, GPT52_MOREHOP_REPEATS),
@@ -390,58 +581,152 @@ for model_label, log_dir, cot_pattern, repeat_patterns in [
         continue
     no_cot_acc = load_morehopqa_accuracy(r1_path)
     print(f"{model_label} MoreHopQA: CoT={cot_acc:.3f}, no-CoT={no_cot_acc:.3f}")
+
     recoveries_m: dict[int, float] = {}
-    for n_repeat, pattern in repeat_patterns.items():
-        path = find_eval_file(log_dir, pattern)
-        if path is None:
-            print(f"  repeat {n_repeat}: file not found ({pattern})")
-            continue
-        acc = load_morehopqa_accuracy(path)
-        rec = prop_recovered(acc, cot_acc, no_cot_acc)
-        recoveries_m[n_repeat] = rec
-        print(f"  repeat {n_repeat}: acc={acc:.3f}, recovery={rec:.3f}")
+    repeat_cols_m: dict[int, str] = {}
+    merged_m: pd.DataFrame | None = None
+
+    if model_label == "GPT-5.2":
+        # GPT-5.2: zip evals, no sample_id — align by row order
+        cot_df_m = load_gpt52_morehop_from_zip(cot_path)
+        r1_df_m = load_gpt52_morehop_from_zip(r1_path)
+        rep_dfs_m: dict[int, pd.DataFrame] = {}
+        for n_repeat, pattern in repeat_patterns.items():
+            path = find_eval_file(log_dir, pattern)
+            if path is None:
+                print(f"  repeat {n_repeat}: file not found ({pattern})")
+                continue
+            acc = load_morehopqa_accuracy(path)
+            rec = prop_recovered(acc, cot_acc, no_cot_acc)
+            recoveries_m[n_repeat] = rec
+            print(f"  repeat {n_repeat}: acc={acc:.3f}, recovery={rec:.3f}")
+            col = f"r{n_repeat}"
+            repeat_cols_m[n_repeat] = col
+            rep_dfs_m[n_repeat] = load_gpt52_morehop_from_zip(path)
+        if recoveries_m and repeat_cols_m and rep_dfs_m:
+            n_align = min(len(cot_df_m), len(r1_df_m), *[len(rep_dfs_m[k]) for k in repeat_cols_m])
+            merged_m = pd.DataFrame({
+                "cot": cot_df_m["correct"].iloc[:n_align].values,
+                "no_cot": r1_df_m["correct"].iloc[:n_align].values,
+            })
+            for n_rep, col in repeat_cols_m.items():
+                merged_m[col] = rep_dfs_m[n_rep]["correct"].iloc[:n_align].values
+            print(f"  merged n={len(merged_m)} (row-aligned), 95% CI:")
+    else:
+        # Opus: samples_df evals — merge by sample_id with row-order fallback
+        cot_df_m = load_morehopqa_correct_df(cot_path).rename(columns={"correct": "cot"})[["sample_id", "cot"]]
+        no_cot_df_m = load_morehopqa_correct_df(r1_path).rename(columns={"correct": "no_cot"})[["sample_id", "no_cot"]]
+        merged_m = cot_df_m.merge(no_cot_df_m, on="sample_id", how="inner")
+        rep_dfs_m: dict[int, pd.DataFrame] = {}
+        for n_repeat, pattern in repeat_patterns.items():
+            path = find_eval_file(log_dir, pattern)
+            if path is None:
+                print(f"  repeat {n_repeat}: file not found ({pattern})")
+                continue
+            acc = load_morehopqa_accuracy(path)
+            rec = prop_recovered(acc, cot_acc, no_cot_acc)
+            recoveries_m[n_repeat] = rec
+            print(f"  repeat {n_repeat}: acc={acc:.3f}, recovery={rec:.3f}")
+            col = f"r{n_repeat}"
+            repeat_cols_m[n_repeat] = col
+            rep_df = load_morehopqa_correct_df(path).rename(columns={"correct": col})[["sample_id", col]]
+            rep_dfs_m[n_repeat] = rep_df
+            merged_m = merged_m.merge(rep_df, on="sample_id", how="inner")
+        if recoveries_m and len(merged_m) == 0 and repeat_cols_m and rep_dfs_m:
+            cot_s = cot_df_m.sort_values("sample_id").reset_index(drop=True)
+            no_cot_s = no_cot_df_m.sort_values("sample_id").reset_index(drop=True)
+            n_align = min(len(cot_s), len(no_cot_s), *[len(rep_dfs_m[k]) for k in repeat_cols_m])
+            cot_s = cot_s.iloc[:n_align]
+            no_cot_s = no_cot_s.iloc[:n_align]
+            merged_m = pd.DataFrame({"cot": cot_s["cot"].values, "no_cot": no_cot_s["no_cot"].values})
+            for n_rep, col in repeat_cols_m.items():
+                rep_sorted = rep_dfs_m[n_rep].sort_values("sample_id").reset_index(drop=True).iloc[:n_align]
+                merged_m[col] = rep_sorted[col].values
+            print(f"  (aligned by row order, n={len(merged_m)} — sample_id merge had 0 rows)")
+        if recoveries_m and merged_m is not None and len(merged_m) > 0 and repeat_cols_m:
+            print(f"  merged n={len(merged_m)}, 95% CI:")
+
     if recoveries_m:
         repeat_recovery_morehop[model_label] = recoveries_m
-
+        if repeat_cols_m and merged_m is not None and len(merged_m) > 0:
+            repeat_recovery_morehop_ci[model_label] = bootstrap_recovery_95ci(
+                merged_m, "cot", "no_cot", repeat_cols_m
+            )
+            for n_rep in sorted(repeat_recovery_morehop_ci[model_label].keys()):
+                lo, hi = repeat_recovery_morehop_ci[model_label][n_rep]
+                print(f"    repeat {n_rep}: [{lo:.3f}, {hi:.3f}]")
+        else:
+            repeat_recovery_morehop_ci[model_label] = {k: (np.nan, np.nan) for k in recoveries_m}
+            if merged_m is None or len(merged_m) == 0:
+                print("  WARNING: no merged rows, CIs set to NaN")
 
 if repeat_recovery_morehop:
     from matplotlib.ticker import FixedLocator, NullLocator
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    markers = {"GPT-5.2": "o", "Opus 4.5": "s", "Qwen 2.5 7B": "D"}
-    for model_label, recoveries in repeat_recovery_morehop.items():
+    # Text summary of CIs before the plot
+    print("MoreHopQA recovery by prompt copies — point estimates and 95% bootstrap CI:")
+    for model_label in repeat_recovery_morehop:
+        recoveries = repeat_recovery_morehop[model_label]
+        ci = repeat_recovery_morehop_ci.get(model_label, {})
         xs = sorted(recoveries.keys())
+        print(f"  {model_label}:")
+        for x in xs:
+            rec = recoveries[x]
+            lo, hi = ci.get(x, (np.nan, np.nan))
+            if np.isfinite(lo) and np.isfinite(hi):
+                print(f"    copies={x}: recovery={rec:.3f}  [95% CI: {lo:.3f}, {hi:.3f}]")
+            else:
+                print(f"    copies={x}: recovery={rec:.3f}  [95% CI: (no data)]")
+
+    # Single column, 2 rows: GPT-5.2 top, Opus 4.5 bottom; y-axis 0–0.5
+    fig, axes = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
+    markers = {"GPT-5.2": "o", "Opus 4.5": "s", "Qwen 2.5 7B": "D"}
+    xticks_m = [x for x in sorted({x for r in repeat_recovery_morehop.values() for x in r})]
+    row_for_model = {"GPT-5.2": 0, "Opus 4.5": 1}
+
+    for model_label, recoveries in repeat_recovery_morehop.items():
+        row = row_for_model.get(model_label, 0)
+        ax = axes[row]
+        xs = np.array(sorted(recoveries.keys()), dtype=float)
         ys = [recoveries[x] for x in xs]
+        ci = repeat_recovery_morehop_ci.get(model_label, {})
+        ci_lo = np.array([ci.get(x, (np.nan, np.nan))[0] for x in xs])
+        ci_hi = np.array([ci.get(x, (np.nan, np.nan))[1] for x in xs])
+        color = model_color(model_label)
+        has_ci = np.isfinite(ci_lo).any() and np.isfinite(ci_hi).any()
+        if has_ci:
+            ax.fill_between(xs, ci_lo, ci_hi, color=color, alpha=0.35)
         ax.plot(
             xs, ys,
             marker=markers.get(model_label, "^"),
-            color=model_color(model_label),
+            color=color,
             label=model_label,
             linewidth=2,
             markersize=8,
         )
-    ax.set_xlabel("Number of prompt copies")
-    ax.set_ylabel("Recovery (prop. of CoT–no-CoT gap)")
-    ax.set_title("MoreHopQA: Recovery by prompt copies")
-    ax.set_ylim(-0.05, 1.1)
-    ax.axhline(y=1.0, color="gray", linestyle="--", alpha=0.5, label="Full recovery")
-    ax.axhline(y=0.0, color="gray", linestyle=":", alpha=0.5)
-    xticks_m = [x for x in sorted({x for r in repeat_recovery_morehop.values() for x in r})]
-    ax.set_xticks(xticks_m)
-    ax.xaxis.set_minor_locator(NullLocator())
-    ax.set_yticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
-    minor_ys = [i / 30 for i in range(1, 30) if i % 6 != 0]
-    ax.yaxis.set_minor_locator(FixedLocator(minor_ys))
-    ax.grid(axis="x", which="major", linestyle="-", linewidth=0.8, alpha=0.7)
-    ax.grid(axis="y", which="major", linestyle="-", linewidth=0.8, alpha=0.7)
-    ax.grid(axis="y", which="minor", linestyle=":", linewidth=0.6, alpha=0.3)
-    ax.grid(axis="x", which="minor", visible=False)
-    y_major_gridlines = list(ax.yaxis.get_gridlines())
-    if len(y_major_gridlines) >= 2:
-        y_major_gridlines[0].set_visible(False)
-        y_major_gridlines[-1].set_visible(False)
-    ax.tick_params(axis="both", which="minor", length=0)
-    ax.legend(loc="upper right", framealpha=1.0)
+        ax.set_ylabel("")
+        ax.set_title(f"Recovery by Prompt Copies (MoreHopQA, n=200, 95% bootstrap CI)")
+        ax.set_ylim(-0.05, 0.5)
+        ax.axhline(y=0.0, color="gray", linestyle=":", alpha=0.5)
+        ax.set_xticks(xticks_m)
+        ax.xaxis.set_minor_locator(NullLocator())
+        ax.set_yticks([0.0, 0.1, 0.2, 0.3, 0.4, 0.5])
+        minor_ys = [i / 50 for i in range(1, 25) if i % 5 != 0]
+        ax.yaxis.set_minor_locator(FixedLocator(minor_ys))
+        ax.grid(axis="x", which="major", linestyle="-", linewidth=0.8, alpha=0.7)
+        ax.grid(axis="y", which="major", linestyle="-", linewidth=0.8, alpha=0.7)
+        ax.grid(axis="y", which="minor", linestyle=":", linewidth=0.6, alpha=0.3)
+        ax.grid(axis="x", which="minor", visible=False)
+        y_major_gridlines = list(ax.yaxis.get_gridlines())
+        if len(y_major_gridlines) >= 2:
+            y_major_gridlines[0].set_visible(False)
+            y_major_gridlines[-1].set_visible(False)
+        ax.tick_params(axis="both", which="minor", length=0)
+        ax.legend(loc="upper right", framealpha=1.0)
+
+    axes[0].set_xlabel("")
+    axes[1].set_xlabel("Number of prompt copies")
+    fig.supylabel("Recovery (prop. of CoT–no-CoT gap)")
     plt.tight_layout()
     plt.savefig(SPECIAL_LOGS.parent / "morehopqa_repeat_recovery.png", dpi=150, bbox_inches="tight")
     plt.show()
