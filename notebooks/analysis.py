@@ -145,6 +145,38 @@ def bootstrap_recovery_95ci(
     }
 
 
+def bootstrap_recovery_95ci_interventions(
+    merged: pd.DataFrame,
+    cot_col: str,
+    no_cot_col: str,
+    intervention_cols: dict[str, str],
+    n_boot: int = 2000,
+    seed: int = 42,
+) -> dict[str, tuple[float, float]]:
+    """Bootstrap 95% CI for recovery at each intervention (paired resample). Returns dict key -> (ci_lo, ci_hi)."""
+    rng = np.random.default_rng(seed)
+    n = len(merged)
+    if n == 0:
+        return {k: (np.nan, np.nan) for k in intervention_cols}
+    boot_recovery: dict[str, list[float]] = {k: [] for k in intervention_cols}
+    for _ in range(n_boot):
+        idx = rng.integers(0, n, size=n)
+        sub = merged.iloc[idx]
+        cot_acc = float(sub[cot_col].mean())
+        no_cot_acc = float(sub[no_cot_col].mean())
+        for key, col in intervention_cols.items():
+            acc = float(sub[col].mean())
+            rec = prop_recovered(acc, cot_acc, no_cot_acc)
+            boot_recovery[key].append(rec)
+    return {
+        key: (
+            float(np.percentile(vals, 2.5)),
+            float(np.percentile(vals, 97.5)),
+        )
+        for key, vals in boot_recovery.items()
+    }
+
+
 def recovery_by_intervention(
     model_name: str,
     reasoning_acc: float,
@@ -236,6 +268,26 @@ def load_morehopqa_accuracy(eval_path: Path) -> float:
     if "score_morehopqa_scorer" not in df.columns:
         raise ValueError(f"Missing score_morehopqa_scorer in {eval_path}")
     return float(df["score_morehopqa_scorer"].mean())
+
+
+def load_gen_arithmetic_accuracy(eval_path: Path) -> float:
+    """Return mean accuracy from a gen-arithmetic eval file."""
+    df = samples_df(logs=str(eval_path), quiet=True)
+    if "score_arithmetic_scorer" not in df.columns:
+        raise ValueError(f"Missing score_arithmetic_scorer in {eval_path}")
+    return float(df["score_arithmetic_scorer"].mean())
+
+
+def load_gen_arithmetic_correct_df(eval_path: Path) -> pd.DataFrame:
+    """Return DataFrame with sample_id and correct (0/1) for bootstrap."""
+    df = samples_df(logs=str(eval_path), quiet=True)
+    if "score_arithmetic_scorer" not in df.columns:
+        raise ValueError(f"Missing score_arithmetic_scorer in {eval_path}")
+    out = df[["sample_id", "score_arithmetic_scorer"]].rename(
+        columns={"score_arithmetic_scorer": "correct"}
+    )
+    out["sample_id"] = out["sample_id"].astype(str)
+    return out
 
 
 def load_morehopqa_correct_df(eval_path: Path) -> pd.DataFrame:
@@ -829,5 +881,219 @@ if morehop_recovery_by_hops:
         plt.show()
 else:
     print("No GPT-5.2 MoreHopQA per-hop data (need evals with metadata.no_of_hops).")
+
+# %% [markdown]
+# ## Restricted CoT interventions: gen-arithmetic and MoreHopQA
+#
+# GPT-5.2 and Opus 4.5 on gen-arithmetic and morehopqa with baselines (unconstrained CoT, no-CoT)
+# and restricted CoT interventions: max_len_{3,4,5}, rhyming, poetry. Evals in special-logs (timestamp-prefixed).
+
+# %%
+# Intervention eval patterns: (display_label, name_pattern) for find_eval_file(SPECIAL_LOGS, pattern)
+GEN_ARITHMETIC_GPT = {
+    "cot": "unconstrained-gen-arithmetic-gpt-5.2",
+    "no_cot": "no-cot-gen-arithmetic-gpt-5.2",
+    "max_len_3": "2stage-stripped-max-len-3-gen-arithmetic-gpt-5.2",
+    "max_len_4": "2stage-stripped-max-len-4-gen-arithmetic-gpt-5.2",
+    "max_len_5": "2stage-stripped-max-len-5-gen-arithmetic-gpt-5.2",
+    "rhyming": "only-rhymes-gen-arithmetic-gpt-5.2",
+    "poetry": "only-poetry-gen-arithmetic-gpt-5.2",
+}
+GEN_ARITHMETIC_OPUS = {
+    "cot": "unconstrained-gen-arithmetic-claude-opus-4.5",
+    "no_cot": "no-cot-gen-arithmetic-claude-opus-4.5",
+    "max_len_3": "2stage-stripped-max-len-3-gen-arithmetic-claude-opus-4.5",
+    "max_len_4": "2stage-stripped-max-len-4-gen-arithmetic-claude-opus-4.5",
+    "max_len_5": "2stage-stripped-max-len-5-gen-arithmetic-claude-opus-4.5",
+    "rhyming": "only-rhymes-gen-arithmetic-claude-opus-4-5",
+    "poetry": "only-poetry-gen-arithmetic-claude-opus-4-5",
+}
+MOREHOPQA_GPT = {
+    "cot": "unconstrained-morehopqa-gpt-5.2",
+    "no_cot": "no-cot-morehopqa-gpt-5.2",
+    "max_len_3": "2stage-stripped-max-len-3-morehopqa-gpt-5.2",
+    "max_len_4": "2stage-stripped-max-len-4-morehopqa-gpt-5.2",
+    "max_len_5": "2stage-stripped-max-len-5-morehopqa-gpt-5.2",
+}
+MOREHOPQA_OPUS = {
+    "cot": "unconstrained-morehopqa-claude-opus-4.5",
+    "no_cot": "no-cot-morehopqa-claude-opus-4.5",
+    "max_len_3": "2stage-stripped-max-len-3-morehopqa-claude-opus-4.5",
+    "max_len_4": "2stage-stripped-max-len-4-morehopqa-claude-opus-4.5",
+    "max_len_5": "2stage-stripped-max-len-5-morehopqa-claude-opus-4.5",
+}
+
+INTERVENTION_ORDER = ["max_len_3", "max_len_4", "max_len_5", "rhyming", "poetry"]
+
+
+def load_intervention_recovery(
+    patterns: dict[str, str],
+    load_acc_fn: object,
+    intervention_keys: list[str],
+) -> tuple[float, float, dict[str, float]] | None:
+    """Load CoT, no-CoT, and intervention accuracies; return (cot_acc, no_cot_acc, {label: acc}) or None."""
+    cot_path = find_eval_file(SPECIAL_LOGS, patterns["cot"])
+    no_cot_path = find_eval_file(SPECIAL_LOGS, patterns["no_cot"])
+    if cot_path is None or no_cot_path is None:
+        return None
+    cot_acc = load_acc_fn(cot_path)
+    no_cot_acc = load_acc_fn(no_cot_path)
+    interventions: dict[str, float] = {}
+    for key in intervention_keys:
+        if key not in patterns:
+            continue
+        path = find_eval_file(SPECIAL_LOGS, patterns[key])
+        if path is None:
+            continue
+        interventions[key] = load_acc_fn(path)
+    if not interventions:
+        return None
+    return (cot_acc, no_cot_acc, interventions)
+
+
+def load_intervention_recovery_with_ci(
+    patterns: dict[str, str],
+    intervention_keys: list[str],
+    load_acc_fn: object,
+    load_correct_df_fn: object,
+    n_boot: int = 2000,
+) -> tuple[float, float, dict[str, float], dict[str, tuple[float, float]]] | None:
+    """Load per-sample data, run bootstrap; return (cot_acc, no_cot_acc, interventions, ci) or None."""
+    cot_path = find_eval_file(SPECIAL_LOGS, patterns["cot"])
+    no_cot_path = find_eval_file(SPECIAL_LOGS, patterns["no_cot"])
+    if cot_path is None or no_cot_path is None:
+        return None
+    cot_acc = load_acc_fn(cot_path)
+    no_cot_acc = load_acc_fn(no_cot_path)
+    cot_df = load_correct_df_fn(cot_path).rename(columns={"correct": "cot"})[["sample_id", "cot"]]
+    no_cot_df = load_correct_df_fn(no_cot_path).rename(columns={"correct": "no_cot"})[["sample_id", "no_cot"]]
+    merged = cot_df.merge(no_cot_df, on="sample_id", how="inner")
+    intervention_cols: dict[str, str] = {}
+    for key in intervention_keys:
+        if key not in patterns:
+            continue
+        path = find_eval_file(SPECIAL_LOGS, patterns[key])
+        if path is None:
+            continue
+        col_df = load_correct_df_fn(path).rename(columns={"correct": key})[["sample_id", key]]
+        merged = merged.merge(col_df, on="sample_id", how="inner")
+        intervention_cols[key] = key
+    if not intervention_cols:
+        return None
+    # Row-order fallback if merge yielded 0 rows
+    if len(merged) == 0:
+        cot_s = cot_df.sort_values("sample_id").reset_index(drop=True)
+        no_cot_s = no_cot_df.sort_values("sample_id").reset_index(drop=True)
+        dfs_by_key: dict[str, pd.DataFrame] = {}
+        for key in intervention_cols:
+            path = find_eval_file(SPECIAL_LOGS, patterns[key])
+            if path is None:
+                continue
+            dfs_by_key[key] = load_correct_df_fn(path).rename(columns={"correct": key})[["sample_id", key]]
+        if not dfs_by_key:
+            return None
+        n_align = min(len(cot_s), len(no_cot_s), *[len(dfs_by_key[k]) for k in dfs_by_key])
+        cot_s = cot_s.iloc[:n_align]
+        no_cot_s = no_cot_s.iloc[:n_align]
+        merged = pd.DataFrame({"cot": cot_s["cot"].values, "no_cot": no_cot_s["no_cot"].values})
+        for key, df in dfs_by_key.items():
+            sorted_df = df.sort_values("sample_id").reset_index(drop=True).iloc[:n_align]
+            merged[key] = sorted_df[key].values
+        intervention_cols = {k: k for k in merged.columns if k not in ("cot", "no_cot")}
+    interventions = {k: load_acc_fn(find_eval_file(SPECIAL_LOGS, patterns[k])) for k in intervention_cols if find_eval_file(SPECIAL_LOGS, patterns[k]) is not None}
+    if not interventions:
+        return None
+    ci = bootstrap_recovery_95ci_interventions(merged, "cot", "no_cot", intervention_cols, n_boot=n_boot)
+    return (cot_acc, no_cot_acc, interventions, ci)
+
+
+# %%
+# Gen-arithmetic: one plot, grouped bars with 95% bootstrap CIs
+result_gpt_ga = load_intervention_recovery_with_ci(
+    GEN_ARITHMETIC_GPT, INTERVENTION_ORDER,
+    load_gen_arithmetic_accuracy, load_gen_arithmetic_correct_df,
+)
+result_opus_ga = load_intervention_recovery_with_ci(
+    GEN_ARITHMETIC_OPUS, INTERVENTION_ORDER,
+    load_gen_arithmetic_accuracy, load_gen_arithmetic_correct_df,
+)
+if result_gpt_ga is not None and result_opus_ga is not None:
+    _cot_gpt, _no_gpt, interv_gpt, ci_gpt = result_gpt_ga
+    _cot_op, _no_op, interv_op, ci_op = result_opus_ga
+    labels_ga = [k for k in INTERVENTION_ORDER if k in interv_gpt or k in interv_op]
+    rec_gpt = [prop_recovered(interv_gpt[k], _cot_gpt, _no_gpt) if k in interv_gpt else None for k in labels_ga]
+    rec_op = [prop_recovered(interv_op[k], _cot_op, _no_op) if k in interv_op else None for k in labels_ga]
+    ci_lo_gpt = [ci_gpt[k][0] if k in ci_gpt and np.isfinite(ci_gpt[k][0]) else 0 for k in labels_ga]
+    ci_hi_gpt = [ci_gpt[k][1] if k in ci_gpt and np.isfinite(ci_gpt[k][1]) else 0 for k in labels_ga]
+    ci_lo_op = [ci_op[k][0] if k in ci_op and np.isfinite(ci_op[k][0]) else 0 for k in labels_ga]
+    ci_hi_op = [ci_op[k][1] if k in ci_op and np.isfinite(ci_op[k][1]) else 0 for k in labels_ga]
+    y_gpt = np.array([r if r is not None else 0 for r in rec_gpt], dtype=float)
+    y_op = np.array([r if r is not None else 0 for r in rec_op], dtype=float)
+    err_gpt = np.array([y_gpt - np.array(ci_lo_gpt), np.array(ci_hi_gpt) - y_gpt])
+    err_op = np.array([y_op - np.array(ci_lo_op), np.array(ci_hi_op) - y_op])
+    x_ga = np.arange(len(labels_ga))
+    width_ga = 0.35
+    fig_ga, ax_ga = plt.subplots(figsize=(8, 5))
+    ax_ga.bar(x_ga - width_ga / 2, y_gpt, width_ga, yerr=err_gpt, capsize=3, label="GPT-5.2", color=model_color("GPT-5.2"), edgecolor="gray")
+    ax_ga.bar(x_ga + width_ga / 2, y_op, width_ga, yerr=err_op, capsize=3, label="Opus 4.5", color=model_color("Opus 4.5"), edgecolor="gray")
+    ax_ga.set_ylabel("Recovery (prop. of gap recovered)")
+    ax_ga.set_xlabel("Intervention")
+    ax_ga.set_title("Gen-arithmetic: Recovery by restricted CoT (95% bootstrap CI)")
+    ax_ga.set_xticks(x_ga)
+    ax_ga.set_xticklabels(labels_ga, rotation=20, ha="right")
+    ax_ga.set_ylim(0, 1.05)
+    ax_ga.axhline(y=1.0, color="gray", linestyle="--", alpha=0.7)
+    ax_ga.legend(loc="upper right")
+    ax_ga.grid(axis="y", alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(SPECIAL_LOGS.parent / "gen_arithmetic_recovery.png", dpi=150, bbox_inches="tight")
+    plt.show()
+else:
+    print("Gen-arithmetic: missing eval files for one or both models, skipping plot.")
+
+# %%
+# MoreHopQA: one plot, grouped bars with 95% bootstrap CIs
+MOREHOPQA_INTERVENTION_ORDER = ["max_len_3", "max_len_4", "max_len_5"]
+result_gpt_mh = load_intervention_recovery_with_ci(
+    MOREHOPQA_GPT, MOREHOPQA_INTERVENTION_ORDER,
+    load_morehopqa_accuracy, load_morehopqa_correct_df,
+)
+result_opus_mh = load_intervention_recovery_with_ci(
+    MOREHOPQA_OPUS, MOREHOPQA_INTERVENTION_ORDER,
+    load_morehopqa_accuracy, load_morehopqa_correct_df,
+)
+if result_gpt_mh is not None and result_opus_mh is not None:
+    _cot_gpt_m, _no_gpt_m, interv_gpt_m, ci_gpt_m = result_gpt_mh
+    _cot_op_m, _no_op_m, interv_op_m, ci_op_m = result_opus_mh
+    labels_mh = [k for k in MOREHOPQA_INTERVENTION_ORDER if k in interv_gpt_m or k in interv_op_m]
+    rec_gpt_m = [prop_recovered(interv_gpt_m[k], _cot_gpt_m, _no_gpt_m) if k in interv_gpt_m else None for k in labels_mh]
+    rec_op_m = [prop_recovered(interv_op_m[k], _cot_op_m, _no_op_m) if k in interv_op_m else None for k in labels_mh]
+    ci_lo_gpt_m = [ci_gpt_m[k][0] if k in ci_gpt_m and np.isfinite(ci_gpt_m[k][0]) else 0 for k in labels_mh]
+    ci_hi_gpt_m = [ci_gpt_m[k][1] if k in ci_gpt_m and np.isfinite(ci_gpt_m[k][1]) else 0 for k in labels_mh]
+    ci_lo_op_m = [ci_op_m[k][0] if k in ci_op_m and np.isfinite(ci_op_m[k][0]) else 0 for k in labels_mh]
+    ci_hi_op_m = [ci_op_m[k][1] if k in ci_op_m and np.isfinite(ci_op_m[k][1]) else 0 for k in labels_mh]
+    y_gpt_m = np.array([r if r is not None else 0 for r in rec_gpt_m], dtype=float)
+    y_op_m = np.array([r if r is not None else 0 for r in rec_op_m], dtype=float)
+    err_gpt_m = np.array([y_gpt_m - np.array(ci_lo_gpt_m), np.array(ci_hi_gpt_m) - y_gpt_m])
+    err_op_m = np.array([y_op_m - np.array(ci_lo_op_m), np.array(ci_hi_op_m) - y_op_m])
+    x_mh = np.arange(len(labels_mh))
+    width_mh = 0.35
+    fig_mh, ax_mh = plt.subplots(figsize=(8, 5))
+    ax_mh.bar(x_mh - width_mh / 2, y_gpt_m, width_mh, yerr=err_gpt_m, capsize=3, label="GPT-5.2", color=model_color("GPT-5.2"), edgecolor="gray")
+    ax_mh.bar(x_mh + width_mh / 2, y_op_m, width_mh, yerr=err_op_m, capsize=3, label="Opus 4.5", color=model_color("Opus 4.5"), edgecolor="gray")
+    ax_mh.set_ylabel("Recovery (prop. of gap recovered)")
+    ax_mh.set_xlabel("Intervention")
+    ax_mh.set_title("MoreHopQA: Recovery by restricted CoT (95% bootstrap CI)")
+    ax_mh.set_xticks(x_mh)
+    ax_mh.set_xticklabels(labels_mh, rotation=20, ha="right")
+    ax_mh.set_ylim(0, 1.05)
+    ax_mh.axhline(y=1.0, color="gray", linestyle="--", alpha=0.7)
+    ax_mh.legend(loc="upper right")
+    ax_mh.grid(axis="y", alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(SPECIAL_LOGS.parent / "morehopqa_restricted_cot_recovery.png", dpi=150, bbox_inches="tight")
+    plt.show()
+else:
+    print("MoreHopQA: missing eval files for one or both models, skipping plot.")
 
 # %%
